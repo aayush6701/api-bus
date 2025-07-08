@@ -15,6 +15,7 @@ from fastapi import Body
 from bson import ObjectId
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pymongo import MongoClient
+import certifi
 
 
 # Add this AFTER app initialization
