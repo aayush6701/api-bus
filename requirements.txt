@@ -6,4 +6,4 @@ python-jose==3.3.0
 python-dotenv==1.0.1
 email-validator==2.1.1
 python-multipart==0.0.9
-pymongo[srv]==3.11
+pymongo[srv]==4.6.3
