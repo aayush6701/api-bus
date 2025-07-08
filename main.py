@@ -30,7 +30,7 @@ app.add_middleware(
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/superadmin/login")
 # MongoDB setup
 client = MongoClient(
-    "mongodb+srv://tatira6301:SmartBus@cluster0.ryrrub5.mongodb.net/SmartBus?retryWrites=true&w=majority",
+    "mongodb://tatira6301:SmartBus@ac-t30irto-shard-00-00.ryrrub5.mongodb.net:27017,ac-t30irto-shard-00-01.ryrrub5.mongodb.net:27017,ac-t30irto-shard-00-02.ryrrub5.mongodb.net:27017/?ssl=true&replicaSet=atlas-zb4da9-shard-0&authSource=admin&retryWrites=true&w=majority&appName=Cluster0",
     tls=True,
     tlsAllowInvalidCertificates=True  # for dev only
 )
