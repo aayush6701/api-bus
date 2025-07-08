@@ -32,7 +32,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/superadmin/login")
 client = MongoClient(
     "mongodb+srv://tatira6301:SmartBus@cluster0.ryrrub5.mongodb.net/SmartBus?retryWrites=true&w=majority",
     tls=True,
-    tlsAllowInvalidCertificates=True  # only for development, remove in prod
+    ssl_cert_reqs=ssl.CERT_NONE
 )
 
 db = client["SmartBus"]
