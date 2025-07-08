@@ -14,6 +14,7 @@ from jose import JWTError, jwt
 from fastapi import Body
 from bson import ObjectId
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import ssl
 from pymongo import MongoClient
 
 
