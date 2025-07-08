@@ -14,7 +14,7 @@ from jose import JWTError, jwt
 from fastapi import Body
 from bson import ObjectId
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
+from pymongo import MongoClient
 
 
 # Add this AFTER app initialization
@@ -28,8 +28,8 @@ app.add_middleware(
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/superadmin/login")
 # MongoDB setup
-client = MongoClient("mongodb://localhost:27017")
-db = client["SmartBus360"]
+client = MongoClient("mongodb+srv://tatira6301:SmartBus@cluster0.ryrrub5.mongodb.net/SmartBus?retryWrites=true&w=majority&appName=Cluster0")
+db = client["SmartBus"]
 superadmin_collection = db["superadmin"]
 institutions_collection = db["institutions"]
 admins_collection = db["admins"]
