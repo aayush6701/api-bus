@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+pymongo
+bcrypt
+python-jose[cryptography]
+python-multipart
