@@ -478,11 +478,56 @@ def save_student_profile(
 
 
 
+# @app.post("/driver/login")
+# def login_driver(form_data: OAuth2PasswordRequestForm = Depends()):
+#     driver = db["drivers"].find_one({"email": form_data.username})
+#     if not driver or not bcrypt.checkpw(form_data.password.encode('utf-8'), driver["password"].encode('utf-8')):
+#         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+#     token_data = {
+#         "sub": driver["email"],
+#         "role": "driver"
+#     }
+
+#     access_token = jwt.encode(token_data, SECRET_KEY, algorithm=ALGORITHM)
+
+#     return {
+#         "access_token": access_token,
+#         "token_type": "bearer",
+#         "driver": {
+#             "name": driver["name"],
+#             "email": driver["email"],
+#             "mobile": driver["mobile"],
+#             "institutionCode": driver["institutionCode"],
+#             "status": driver["status"],
+#             "location": driver["location"]
+#         }
+#     }
+
+
 @app.post("/driver/login")
 def login_driver(form_data: OAuth2PasswordRequestForm = Depends()):
     driver = db["drivers"].find_one({"email": form_data.username})
     if not driver or not bcrypt.checkpw(form_data.password.encode('utf-8'), driver["password"].encode('utf-8')):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    driver_id = str(driver["_id"])
+
+    # ✅ Find the bus assigned to this driver
+    bus_entry = db["institutions"].find_one(
+        {"buses.journeys.driverId": driver_id},
+        {"buses": 1}
+    )
+
+    driver_bus_no = None
+    if bus_entry:
+        for bus in bus_entry.get("buses", []):
+            for journey in bus.get("journeys", []):
+                if journey.get("driverId") == driver_id:
+                    driver_bus_no = bus.get("busNo")
+                    break
+            if driver_bus_no:
+                break
 
     token_data = {
         "sub": driver["email"],
@@ -499,8 +544,10 @@ def login_driver(form_data: OAuth2PasswordRequestForm = Depends()):
             "email": driver["email"],
             "mobile": driver["mobile"],
             "institutionCode": driver["institutionCode"],
+            "licenseNo": driver["licenseNo"],  # ✅ Added
             "status": driver["status"],
-            "location": driver["location"]
+            "location": driver["location"],
+            "busNo": driver_bus_no  # ✅ Added
         }
     }
 
