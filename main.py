@@ -575,52 +575,47 @@ def update_driver_location(
 
 
 @app.get("/driver/upcoming-journey")
-def get_upcoming_journey(current_user: dict = Depends(get_current_driver)):
+async def get_upcoming_journey(driver: dict = Depends(get_current_driver)):
     now = datetime.now()
+    driver_email = driver.get("sub")
 
-    driver_email = current_user.get("sub")
-    institution_code = current_user.get("institutionCode")
-
-    if not driver_email or not institution_code:
-        raise HTTPException(status_code=400, detail="Invalid token")
-
-    driver = db["drivers"].find_one({"email": driver_email})
-    if not driver:
+    driver_doc = db["drivers"].find_one({"email": driver_email})
+    if not driver_doc:
         raise HTTPException(status_code=404, detail="Driver not found")
 
-    driver_id = str(driver["_id"])
+    driver_id = str(driver_doc["_id"])
 
-    # Search all buses in the institution for this driver
-    institution = db["institutions"].find_one({"institutionCode": institution_code})
+    # 🔍 Find the bus containing journeys for this driver
+    institution = db["institutions"].find_one({
+        "buses.journeys.driverId": driver_id
+    })
+
     if not institution:
-        raise HTTPException(status_code=404, detail="Institution not found")
+        return {"routeName": "No journey scheduled"}
 
     upcoming_journey = None
+    earliest_start = None
+
     for bus in institution.get("buses", []):
         for journey in bus.get("journeys", []):
-            if journey.get("driverId") != driver_id:
-                continue
+            if journey.get("driverId") == driver_id:
+                try:
+                    start_time = datetime.strptime(journey["startTime"], "%H:%M").replace(
+                        year=now.year, month=now.month, day=now.day
+                    )
+                    end_time = datetime.strptime(journey["endTime"], "%H:%M").replace(
+                        year=now.year, month=now.month, day=now.day
+                    )
+                except Exception as e:
+                    continue
 
-            # Parse time strings
-            try:
-                start_time = datetime.strptime(journey["startTime"], "%H:%M").time()
-                end_time = datetime.strptime(journey["endTime"], "%H:%M").time()
-            except ValueError:
-                continue  # skip malformed times
-
-            now_time = now.time()
-
-            # Check if journey is currently active
-            if start_time <= now_time <= end_time:
-                upcoming_journey = journey
-                break
-
-            # If journey is in the future and no closer journey stored yet
-            if now_time < start_time and (upcoming_journey is None or start_time < datetime.strptime(upcoming_journey["startTime"], "%H:%M").time()):
-                upcoming_journey = journey
-
-        if upcoming_journey:
-            break
+                # ⏰ Show ongoing or next journey
+                if start_time <= now <= end_time:
+                    return {"routeName": journey["routeName"]}
+                elif now < start_time:
+                    if earliest_start is None or start_time < earliest_start:
+                        upcoming_journey = journey
+                        earliest_start = start_time
 
     if upcoming_journey:
         return {"routeName": upcoming_journey["routeName"]}
