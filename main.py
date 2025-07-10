@@ -554,15 +554,21 @@ def update_driver_location(
     location: LocationUpdate,
     driver: dict = Depends(get_current_driver)
 ):
+    print("🔒 Token payload:", driver)
+    print("📍 Location received:", location.dict())
+
     email = driver.get("sub")
     if not email:
+        print("❌ Missing email in token")
         raise HTTPException(status_code=400, detail="Invalid token")
 
-    db["drivers"].update_one(
+    result = db["drivers"].update_one(
         {"email": email},
         {"$set": {
             "location.latitude": location.latitude,
             "location.longitude": location.longitude
         }}
     )
+
+    print(f"📦 MongoDB Update result: matched={result.matched_count}, modified={result.modified_count}")
     return {"message": "Location updated successfully"}
