@@ -48,3 +48,7 @@ class StudentProfile(BaseModel):
     password: str
     mobile: str
     address: str
+
+class LocationUpdate(BaseModel):
+    latitude: float
+    longitude: float

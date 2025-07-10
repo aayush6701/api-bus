@@ -16,6 +16,7 @@ from bson import ObjectId
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pymongo import MongoClient
 import certifi
+from models import LocationUpdate
 
 
 # Add this AFTER app initialization
@@ -477,34 +478,6 @@ def save_student_profile(
     return {"message": "Student profile saved successfully"}
 
 
-
-# @app.post("/driver/login")
-# def login_driver(form_data: OAuth2PasswordRequestForm = Depends()):
-#     driver = db["drivers"].find_one({"email": form_data.username})
-#     if not driver or not bcrypt.checkpw(form_data.password.encode('utf-8'), driver["password"].encode('utf-8')):
-#         raise HTTPException(status_code=401, detail="Invalid email or password")
-
-#     token_data = {
-#         "sub": driver["email"],
-#         "role": "driver"
-#     }
-
-#     access_token = jwt.encode(token_data, SECRET_KEY, algorithm=ALGORITHM)
-
-#     return {
-#         "access_token": access_token,
-#         "token_type": "bearer",
-#         "driver": {
-#             "name": driver["name"],
-#             "email": driver["email"],
-#             "mobile": driver["mobile"],
-#             "institutionCode": driver["institutionCode"],
-#             "status": driver["status"],
-#             "location": driver["location"]
-#         }
-#     }
-
-
 @app.post("/driver/login")
 def login_driver(form_data: OAuth2PasswordRequestForm = Depends()):
     driver = db["drivers"].find_one({"email": form_data.username})
@@ -512,6 +485,7 @@ def login_driver(form_data: OAuth2PasswordRequestForm = Depends()):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     driver_id = str(driver["_id"])
+    db["drivers"].update_one({"_id": driver["_id"]}, {"$set": {"status": True}})
 
     # ✅ Find the bus assigned to this driver
     bus_entry = db["institutions"].find_one(
@@ -571,3 +545,24 @@ def get_driver_profile(driver_token: dict = Depends(get_current_driver)):
         raise HTTPException(status_code=404, detail="Driver not found")
 
     return driver
+
+
+from models import LocationUpdate
+
+@app.post("/driver/update-location")
+def update_driver_location(
+    location: LocationUpdate,
+    driver: dict = Depends(get_current_driver)
+):
+    email = driver.get("sub")
+    if not email:
+        raise HTTPException(status_code=400, detail="Invalid token")
+
+    db["drivers"].update_one(
+        {"email": email},
+        {"$set": {
+            "location.latitude": location.latitude,
+            "location.longitude": location.longitude
+        }}
+    )
+    return {"message": "Location updated successfully"}
