@@ -572,3 +572,37 @@ def update_driver_location(
 
     print(f"📦 MongoDB Update result: matched={result.matched_count}, modified={result.modified_count}")
     return {"message": "Location updated successfully"}
+
+
+@app.get("/driver/upcoming-journey")
+async def get_upcoming_journey(current_user: dict = Depends(get_current_driver)):
+    now = datetime.now()
+
+    driver_id = current_user["_id"]
+    institution_code = current_user["institutionCode"]
+
+    # Get all routes for this driver’s institution
+    routes = list(db.routes.find({
+        "institutionCode": institution_code,
+        "driverId": str(driver_id)
+    }))
+
+    next_journey = None
+    for route in routes:
+        start_time = datetime.strptime(route["startTime"], "%H:%M")
+        end_time = datetime.strptime(route["endTime"], "%H:%M")
+
+        today_start = now.replace(hour=start_time.hour, minute=start_time.minute, second=0, microsecond=0)
+        today_end = now.replace(hour=end_time.hour, minute=end_time.minute, second=0, microsecond=0)
+
+        if today_start <= now <= today_end:
+            next_journey = route
+            break
+        elif now < today_start:
+            if not next_journey or today_start < datetime.strptime(next_journey["startTime"], "%H:%M"):
+                next_journey = route
+
+    if next_journey:
+        return {"routeName": next_journey["routeName"]}
+    else:
+        return {"routeName": "No journey scheduled"}
