@@ -6,3 +6,4 @@ python-jose[cryptography]
 python-multipart
 pydantic[email]
 certifi
+geopy

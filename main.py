@@ -17,7 +17,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pymongo import MongoClient
 import certifi
 from models import LocationUpdate
-
+from geopy.distance import geodesic
 
 # Add this AFTER app initialization
 app.add_middleware(
@@ -621,4 +621,51 @@ async def get_upcoming_journey(driver: dict = Depends(get_current_driver)):
         return {"routeName": upcoming_journey["routeName"]}
     else:
         return {"routeName": "No journey scheduled"}
+
+
+
+
+@app.get("/driver/next-stop")
+def get_next_stop(driver: dict = Depends(get_current_driver)):
+    email = driver["sub"]
+    driver_data = db["drivers"].find_one({"email": email})
+    if not driver_data:
+        raise HTTPException(status_code=404, detail="Driver not found")
+
+    location = driver_data.get("location", {})
+    if not location.get("latitude") or not location.get("longitude"):
+        raise HTTPException(status_code=400, detail="Location not available")
+
+    driver_id = str(driver_data["_id"])
+
+    institution = db["institutions"].find_one({
+        "buses.journeys.driverId": driver_id
+    })
+
+    if not institution:
+        raise HTTPException(status_code=404, detail="No bus or journey found for driver")
+
+    next_stop = None
+    for bus in institution.get("buses", []):
+        for journey in bus.get("journeys", []):
+            if journey.get("driverId") != driver_id:
+                continue
+
+            for stop in journey.get("stoppages", []):
+                stop_loc = (stop["latitude"], stop["longitude"])
+                driver_loc = (location["latitude"], location["longitude"])
+                distance = geodesic(driver_loc, stop_loc).meters
+
+                if distance > 50:  # if driver hasn't reached this stop yet
+                    next_stop = stop["name"]
+                    break
+
+            if next_stop:
+                break
+        if next_stop:
+            break
+
+    if not next_stop:
+        return {"nextStop": "Journey Completed"}
+    return {"nextStop": next_stop}
 
