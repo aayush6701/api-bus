@@ -789,3 +789,20 @@ def stop_journey(driver_token: dict = Depends(get_current_driver)):
     driver_email = driver_token["sub"]
     db["drivers"].update_one({"email": driver_email}, {"$unset": {"ongoingJourney": ""}})
     return {"message": "Journey stopped"}
+
+
+@app.post("/driver/logout")
+def logout_driver(driver: dict = Depends(get_current_driver)):
+    email = driver.get("sub")
+    if not email:
+        raise HTTPException(status_code=400, detail="Invalid token")
+
+    db["drivers"].update_one(
+        {"email": email},
+        {"$set": {
+            "status": False,
+            "location.latitude": None,
+            "location.longitude": None
+        }}
+    )
+    return {"message": "Logout successful"}
