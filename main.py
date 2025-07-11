@@ -695,3 +695,13 @@ def get_driver_journeys(driver: dict = Depends(get_current_driver)):
                 })
 
     return journeys
+
+
+@app.put("/driver/status-off")
+def mark_driver_offline(driver: dict = Depends(get_current_driver)):
+    email = driver.get("sub")
+    result = db["drivers"].update_one(
+        {"email": email},
+        {"$set": {"status": False}}
+    )
+    return {"message": "Driver marked offline"}
