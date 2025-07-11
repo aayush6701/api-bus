@@ -669,3 +669,29 @@ def get_next_stop(driver: dict = Depends(get_current_driver)):
         return {"nextStop": "Journey Completed"}
     return {"nextStop": next_stop}
 
+@app.get("/driver/journeys")
+def get_driver_journeys(driver: dict = Depends(get_current_driver)):
+    email = driver["sub"]
+    driver_doc = db["drivers"].find_one({"email": email})
+    if not driver_doc:
+        raise HTTPException(status_code=404, detail="Driver not found")
+
+    driver_id = str(driver_doc["_id"])
+
+    journeys = []
+    institution = db["institutions"].find_one({
+        "buses.journeys.driverId": driver_id
+    })
+
+    if not institution:
+        return []
+
+    for bus in institution.get("buses", []):
+        for journey in bus.get("journeys", []):
+            if journey["driverId"] == driver_id:
+                journeys.append({
+                    "routeName": journey["routeName"],
+                    "stoppages": journey.get("stoppages", [])
+                })
+
+    return journeys
