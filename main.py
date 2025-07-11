@@ -549,6 +549,34 @@ def get_driver_profile(driver_token: dict = Depends(get_current_driver)):
 
 from models import LocationUpdate
 
+# @app.post("/driver/update-location")
+# def update_driver_location(
+#     location: LocationUpdate,
+#     driver: dict = Depends(get_current_driver)
+# ):
+#     print("🔒 Token payload:", driver)
+#     print("📍 Location received:", location.dict())
+
+#     email = driver.get("sub")
+#     if not email:
+#         print("❌ Missing email in token")
+#         raise HTTPException(status_code=400, detail="Invalid token")
+
+#     result = db["drivers"].update_one(
+#         {"email": email},
+#         {"$set": {
+#             "location.latitude": location.latitude,
+#             "location.longitude": location.longitude
+#         }}
+#     )
+
+#     print(f"📦 MongoDB Update result: matched={result.matched_count}, modified={result.modified_count}")
+#     return {"message": "Location updated successfully"}
+
+
+from fastapi import HTTPException
+from geopy.distance import geodesic
+
 @app.post("/driver/update-location")
 def update_driver_location(
     location: LocationUpdate,
@@ -562,6 +590,7 @@ def update_driver_location(
         print("❌ Missing email in token")
         raise HTTPException(status_code=400, detail="Invalid token")
 
+    # Update driver's current location
     result = db["drivers"].update_one(
         {"email": email},
         {"$set": {
@@ -571,8 +600,34 @@ def update_driver_location(
     )
 
     print(f"📦 MongoDB Update result: matched={result.matched_count}, modified={result.modified_count}")
-    return {"message": "Location updated successfully"}
 
+    # Fetch driver document again to access journey
+    driver_doc = db["drivers"].find_one({"email": email})
+    ongoing = driver_doc.get("ongoingJourney")
+
+    if ongoing:
+        stops = ongoing.get("stops", [])
+        updated = False
+
+        for i, stop in enumerate(stops):
+            if not stop.get("status"):
+                stop_coords = (stop["latitude"], stop["longitude"])
+                driver_coords = (location.latitude, location.longitude)
+                distance = geodesic(driver_coords, stop_coords).meters
+
+                if distance < 50:  # within 50 meters
+                    stops[i]["status"] = True
+                    updated = True
+                    print(f"🟢 Stop '{stop['name']}' marked as reached.")
+                    break  # mark only one stop at a time
+
+        if updated:
+            db["drivers"].update_one(
+                {"email": email},
+                {"$set": {"ongoingJourney.stops": stops}}
+            )
+
+    return {"message": "Location updated successfully"}
 
 @app.get("/driver/upcoming-journey")
 async def get_upcoming_journey(driver: dict = Depends(get_current_driver)):
