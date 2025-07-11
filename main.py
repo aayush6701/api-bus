@@ -697,11 +697,40 @@ def get_driver_journeys(driver: dict = Depends(get_current_driver)):
     return journeys
 
 
-@app.put("/driver/status-off")
-def mark_driver_offline(driver: dict = Depends(get_current_driver)):
-    email = driver.get("sub")
-    result = db["drivers"].update_one(
-        {"email": email},
-        {"$set": {"status": False}}
-    )
-    return {"message": "Driver marked offline"}
+from fastapi import Request
+
+@app.post("/driver/start-journey")
+async def start_journey(request: Request, driver_token: dict = Depends(get_current_driver)):
+    data = await request.json()
+    route_name = data.get("routeName")
+    driver_email = driver_token["sub"]
+
+    # Fetch driver
+    driver = db["drivers"].find_one({"email": driver_email})
+    if not driver:
+        raise HTTPException(status_code=404, detail="Driver not found")
+
+    driver_id = str(driver["_id"])
+
+    # Find assigned journey
+    institution = db["institutions"].find_one({"buses.journeys.driverId": driver_id})
+    if not institution:
+        raise HTTPException(status_code=404, detail="No journey found")
+
+    for bus in institution["buses"]:
+        for journey in bus["journeys"]:
+            if journey["driverId"] == driver_id and journey["routeName"] == route_name:
+                stops = [{"name": s["name"], "status": False} for s in journey["stoppages"]]
+                db["drivers"].update_one(
+                    {"email": driver_email},
+                    {"$set": {"ongoingJourney": {"routeName": route_name, "stoppages": stops}}}
+                )
+                return {"message": "Journey started"}
+    raise HTTPException(status_code=404, detail="Matching journey not found")
+
+
+@app.post("/driver/stop-journey")
+def stop_journey(driver_token: dict = Depends(get_current_driver)):
+    driver_email = driver_token["sub"]
+    db["drivers"].update_one({"email": driver_email}, {"$unset": {"ongoingJourney": ""}})
+    return {"message": "Journey stopped"}
