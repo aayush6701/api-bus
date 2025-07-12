@@ -824,59 +824,38 @@ def get_admin_dashboard(admin: dict = Depends(get_current_admin)):
     return {"message": f"Welcome {admin['sub']}"}
 
 
-from geopy.geocoders import Nominatim
-
 @app.get("/admin/buses")
-def get_admin_buses(admin: dict = Depends(get_current_admin)):
-    institution_code = admin["institutionCode"]
-    institution = db["institutions"].find_one({"institutionCode": institution_code})
+def get_admin_buses(request: Request, db=Depends(get_database), token: str = Depends(JWTBearer())):
+    payload = decodeJWT(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
+    email = payload.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Token missing email")
+
+    admin = db["admins"].find_one({"email": email})
+    if not admin:
+        raise HTTPException(status_code=404, detail="Admin not found")
+
+    institution_code = admin.get("institutionCode")
+    if not institution_code:
+        raise HTTPException(status_code=400, detail="Admin has no institutionCode")
+
+    institution = db["institutions"].find_one({"institutionCode": institution_code})
     if not institution:
         raise HTTPException(status_code=404, detail="Institution not found")
 
-    buses = institution.get("buses", [])
+    bus_list = institution.get("buses", [])
+
     result = []
-
-    geolocator = Nominatim(user_agent="smartbus-admin")
-
-    for bus in buses:
-        bus_info = {
-            "busNo": bus.get("busNo"),
-            "vehicleNo": bus.get("vehicleNo"),
-            "status": "Inactive",
-            "currentJourney": "N/A",
-            "location": "Unknown"
-        }
-
-        for journey in bus.get("journeys", []):
-            driver_id = journey.get("driverId")
-            if not driver_id:
-                continue
-
-            driver = db["drivers"].find_one({"_id": ObjectId(driver_id)})
-            if driver and driver.get("status") == True:
-                # ✅ Active driver found
-                bus_info["status"] = "Active"
-
-                # ✅ Current Journey
-                ongoing = driver.get("ongoingJourney")
-                if ongoing:
-                    bus_info["currentJourney"] = ongoing.get("routeName", "N/A")
-
-                # ✅ Location (casual name)
-                location = driver.get("location", {})
-                lat = location.get("latitude")
-                lon = location.get("longitude")
-
-                if lat and lon:
-                    try:
-                        loc = geolocator.reverse((lat, lon), timeout=5)
-                        bus_info["location"] = loc.address.split(",")[0]
-                    except Exception:
-                        bus_info["location"] = f"{lat:.4f}, {lon:.4f}"
-
-                break  # Only one active driver per bus matters
-
-        result.append(bus_info)
+    for bus in bus_list:
+        result.append({
+            "busNo": bus.get("busNo", ""),
+            "vehicleNo": bus.get("vehicleNo", ""),
+            "status": bus.get("status", "Offline"),
+            "currentJourney": bus.get("currentJourney", "None"),
+            "location": bus.get("location", "Unknown")
+        })
 
     return result
