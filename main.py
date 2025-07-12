@@ -825,12 +825,13 @@ def get_admin_dashboard(admin: dict = Depends(get_current_admin)):
 
 
 @app.get("/admin/buses")
-def get_admin_buses(request: Request, db=client, token: str = Depends(JWTBearer())):
-    payload = decodeJWT(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid token")
+def get_admin_buses(token: HTTPAuthorizationCredentials = Depends(auth_scheme)):
+    payload = jwt.decode(token.credentials, SECRET_KEY, algorithms=["HS256"])
 
-    email = payload.get("email")
+    if not payload or payload.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Invalid or unauthorized token")
+
+    email = payload.get("sub")  # we store email under "sub"
     if not email:
         raise HTTPException(status_code=400, detail="Token missing email")
 
@@ -850,12 +851,13 @@ def get_admin_buses(request: Request, db=client, token: str = Depends(JWTBearer(
 
     result = []
     for bus in bus_list:
+        # You can customize how status, currentJourney, and location are fetched
         result.append({
             "busNo": bus.get("busNo", ""),
             "vehicleNo": bus.get("vehicleNo", ""),
-            "status": bus.get("status", "Offline"),
-            "currentJourney": bus.get("currentJourney", "None"),
-            "location": bus.get("location", "Unknown")
+            "status": "Active" if any(driver.get("status") for driver in db["drivers"].find({"institutionCode": institution_code})) else "Offline",
+            "currentJourney": next((j["routeName"] for j in bus.get("journeys", []) if j["driverId"] in [str(d["_id"]) for d in db["drivers"].find({"institutionCode": institution_code, "status": True})]), "None"),
+            "location": next((f"{d.get('location', {}).get('latitude', 0)},{d.get('location', {}).get('longitude', 0)}" for d in db["drivers"].find({"institutionCode": institution_code, "status": True})), "Unknown")
         })
 
     return result
