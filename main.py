@@ -549,31 +549,6 @@ def get_driver_profile(driver_token: dict = Depends(get_current_driver)):
 
 from models import LocationUpdate
 
-# @app.post("/driver/update-location")
-# def update_driver_location(
-#     location: LocationUpdate,
-#     driver: dict = Depends(get_current_driver)
-# ):
-#     print("🔒 Token payload:", driver)
-#     print("📍 Location received:", location.dict())
-
-#     email = driver.get("sub")
-#     if not email:
-#         print("❌ Missing email in token")
-#         raise HTTPException(status_code=400, detail="Invalid token")
-
-#     result = db["drivers"].update_one(
-#         {"email": email},
-#         {"$set": {
-#             "location.latitude": location.latitude,
-#             "location.longitude": location.longitude
-#         }}
-#     )
-
-#     print(f"📦 MongoDB Update result: matched={result.matched_count}, modified={result.modified_count}")
-#     return {"message": "Location updated successfully"}
-
-
 from fastapi import HTTPException
 from geopy.distance import geodesic
 
@@ -806,3 +781,44 @@ def logout_driver(driver: dict = Depends(get_current_driver)):
         }}
     )
     return {"message": "Logout successful"}
+
+
+@app.post("/admin/login")
+async def login_admin(form_data: OAuth2PasswordRequestForm = Depends()):
+    admin = admins_collection.find_one({"email": form_data.username})
+    if not admin:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not bcrypt.checkpw(form_data.password.encode('utf-8'), admin["password"].encode('utf-8')):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token_data = {
+        "sub": admin["email"],
+        "role": "admin"
+    }
+
+    access_token = create_access_token(token_data, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "admin": {
+            "email": admin["email"],
+            "institutionCode": admin.get("institutionCode", "")
+        }
+    }
+
+
+def get_current_admin(token: HTTPAuthorizationCredentials = Depends(auth_scheme)):
+    try:
+        payload = jwt.decode(token.credentials, SECRET_KEY, algorithms=["HS256"])
+        if payload.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Not an admin")
+        return payload
+    except jwt.JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
+@app.get("/admin/dashboard")
+def get_admin_dashboard(admin: dict = Depends(get_current_admin)):
+    return {"message": f"Welcome {admin['sub']}"}

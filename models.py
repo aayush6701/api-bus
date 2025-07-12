@@ -52,3 +52,5 @@ class StudentProfile(BaseModel):
 class LocationUpdate(BaseModel):
     latitude: float
     longitude: float
+
+
