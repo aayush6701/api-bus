@@ -825,7 +825,7 @@ def get_admin_dashboard(admin: dict = Depends(get_current_admin)):
 
 
 @app.get("/admin/buses")
-def get_admin_buses(request: Request, db=Depends(get_database), token: str = Depends(JWTBearer())):
+def get_admin_buses(request: Request, db=client, token: str = Depends(JWTBearer())):
     payload = decodeJWT(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")
