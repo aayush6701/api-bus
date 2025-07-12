@@ -822,3 +822,61 @@ def get_current_admin(token: HTTPAuthorizationCredentials = Depends(auth_scheme)
 @app.get("/admin/dashboard")
 def get_admin_dashboard(admin: dict = Depends(get_current_admin)):
     return {"message": f"Welcome {admin['sub']}"}
+
+
+from geopy.geocoders import Nominatim
+
+@app.get("/admin/buses")
+def get_admin_buses(admin: dict = Depends(get_current_admin)):
+    institution_code = admin["institutionCode"]
+    institution = db["institutions"].find_one({"institutionCode": institution_code})
+
+    if not institution:
+        raise HTTPException(status_code=404, detail="Institution not found")
+
+    buses = institution.get("buses", [])
+    result = []
+
+    geolocator = Nominatim(user_agent="smartbus-admin")
+
+    for bus in buses:
+        bus_info = {
+            "busNo": bus.get("busNo"),
+            "vehicleNo": bus.get("vehicleNo"),
+            "status": "Inactive",
+            "currentJourney": "N/A",
+            "location": "Unknown"
+        }
+
+        for journey in bus.get("journeys", []):
+            driver_id = journey.get("driverId")
+            if not driver_id:
+                continue
+
+            driver = db["drivers"].find_one({"_id": ObjectId(driver_id)})
+            if driver and driver.get("status") == True:
+                # ✅ Active driver found
+                bus_info["status"] = "Active"
+
+                # ✅ Current Journey
+                ongoing = driver.get("ongoingJourney")
+                if ongoing:
+                    bus_info["currentJourney"] = ongoing.get("routeName", "N/A")
+
+                # ✅ Location (casual name)
+                location = driver.get("location", {})
+                lat = location.get("latitude")
+                lon = location.get("longitude")
+
+                if lat and lon:
+                    try:
+                        loc = geolocator.reverse((lat, lon), timeout=5)
+                        bus_info["location"] = loc.address.split(",")[0]
+                    except Exception:
+                        bus_info["location"] = f"{lat:.4f}, {lon:.4f}"
+
+                break  # Only one active driver per bus matters
+
+        result.append(bus_info)
+
+    return result
