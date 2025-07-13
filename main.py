@@ -865,20 +865,20 @@ def get_admin_buses(token: HTTPAuthorizationCredentials = Depends(auth_scheme)):
 
 
 
-@app.post("/student/verify")
-def verify_student(institution_code: str = Form(...), roll_no: str = Form(...)):
-    # Match institution using the correct field name
-    institution = db["institutions"].find_one({"institutionCode": institution_code})
-    if not institution:
-        raise HTTPException(status_code=404, detail="Institution not found")
+@app.post("/student/verify-enrollment")
+async def verify_enrollment(data: dict = Body(...)):
+    institution_code = data.get("institution_code")
+    enrollment = data.get("enrollment")
 
-    # Check if student with given rollNo exists
-    student = db["students"].find_one({
+    if not institution_code or not enrollment:
+        raise HTTPException(status_code=400, detail="Missing institution_code or enrollment")
+
+    student = await db["students"].find_one({
         "institutionCode": institution_code,
-        "rollNo": roll_no
+        "rollNo": enrollment
     })
 
     if student:
-        return {"status": "exists", "student_id": str(student["_id"])}
+        return {"message": "Enrollment verified"}
     else:
         raise HTTPException(status_code=404, detail="Student not found")
