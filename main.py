@@ -18,6 +18,7 @@ from pymongo import MongoClient
 import certifi
 from models import LocationUpdate
 from geopy.distance import geodesic
+from fastapi import Form
 
 # Add this AFTER app initialization
 app.add_middleware(
@@ -861,3 +862,23 @@ def get_admin_buses(token: HTTPAuthorizationCredentials = Depends(auth_scheme)):
         })
 
     return result
+
+
+
+@app.post("/student/verify")
+def verify_student(institution_code: str = Form(...), roll_no: str = Form(...)):
+    # Match institution using the correct field name
+    institution = db["institutions"].find_one({"institutionCode": institution_code})
+    if not institution:
+        raise HTTPException(status_code=404, detail="Institution not found")
+
+    # Check if student with given rollNo exists
+    student = db["students"].find_one({
+        "institutionCode": institution_code,
+        "rollNo": roll_no
+    })
+
+    if student:
+        return {"status": "exists", "student_id": str(student["_id"])}
+    else:
+        raise HTTPException(status_code=404, detail="Student not found")
