@@ -866,14 +866,14 @@ def get_admin_buses(token: HTTPAuthorizationCredentials = Depends(auth_scheme)):
 
 
 @app.post("/student/verify-enrollment")
-async def verify_enrollment(data: dict = Body(...)):
+def verify_enrollment(data: dict = Body(...)):
     institution_code = data.get("institution_code")
     enrollment = data.get("enrollment")
 
     if not institution_code or not enrollment:
         raise HTTPException(status_code=400, detail="Missing institution_code or enrollment")
 
-    student = await db["students"].find_one({
+    student = db["students"].find_one({
         "institutionCode": institution_code,
         "rollNo": enrollment
     })
