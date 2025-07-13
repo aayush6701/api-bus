@@ -925,3 +925,37 @@ def complete_student_registration(
         raise HTTPException(status_code=404, detail="Student not found or already registered")
 
     return {"message": "Student registered successfully"}
+
+
+@app.post("/student/login-secure")
+def secure_login_student(data: StudentSecureLogin):
+    student = db["students"].find_one({
+        "institutionCode": data.institutionCode,
+        "email": data.email
+    })
+
+    if not student:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or institution code")
+
+    if not bcrypt.checkpw(data.password.encode('utf-8'), student.get("password", "").encode('utf-8')):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
+
+    token_data = {
+        "sub": student["email"],
+        "institutionCode": student["institutionCode"],
+        "role": "student"
+    }
+
+    access_token = jwt.encode(token_data, STUDENT_SECRET_KEY, algorithm=ALGORITHM)
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "student": {
+            "institutionCode": student["institutionCode"],
+            "institutionName": student["institutionName"],
+            "rollNo": student["rollNo"],
+            "busNo": student["busNo"],
+            "journeys": student.get("journeys", [])
+        }
+    }

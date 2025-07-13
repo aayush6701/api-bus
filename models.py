@@ -54,3 +54,7 @@ class LocationUpdate(BaseModel):
     longitude: float
 
 
+class StudentSecureLogin(BaseModel):
+    institutionCode: str
+    email: str
+    password: str
