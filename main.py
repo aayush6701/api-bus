@@ -864,7 +864,6 @@ def get_admin_buses(token: HTTPAuthorizationCredentials = Depends(auth_scheme)):
     return result
 
 
-
 @app.post("/student/verify-enrollment")
 def verify_enrollment(data: dict = Body(...)):
     institution_code = data.get("institution_code")
@@ -879,6 +878,50 @@ def verify_enrollment(data: dict = Body(...)):
     })
 
     if student:
-        return {"message": "Enrollment verified"}
+        token_data = {
+            "sub": enrollment,
+            "institutionCode": institution_code,
+            "role": "student-unregistered"
+        }
+        token = jwt.encode(token_data, STUDENT_SECRET_KEY, algorithm=ALGORITHM)
+        return {"message": "Enrollment verified", "access_token": token}
     else:
         raise HTTPException(status_code=404, detail="Student not found")
+
+
+@app.post("/student/complete-registration")
+def complete_student_registration(
+    data: StudentProfile,
+    token: HTTPAuthorizationCredentials = Depends(student_auth_scheme)
+):
+    try:
+        payload = jwt.decode(token.credentials, STUDENT_SECRET_KEY, algorithms=["HS256"])
+    except jwt.JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    if payload.get("role") != "student-unregistered":
+        raise HTTPException(status_code=403, detail="Invalid token role")
+
+    roll_no = payload.get("sub")
+    institution_code = payload.get("institutionCode")
+
+    if not roll_no or not institution_code:
+        raise HTTPException(status_code=400, detail="Invalid token payload")
+
+    hashed_pw = bcrypt.hashpw(data.password.encode('utf-8'), bcrypt.gensalt())
+
+    result = db["students"].update_one(
+        {"institutionCode": institution_code, "rollNo": roll_no},
+        {"$set": {
+            "name": data.name,
+            "email": data.email,
+            "mobile": data.mobile,
+            "address": data.address,
+            "password": hashed_pw.decode('utf-8')
+        }}
+    )
+
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Student not found or already registered")
+
+    return {"message": "Student registered successfully"}
