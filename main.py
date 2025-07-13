@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
-from models import SuperAdminRegister, DriverRegister, StudentRegister, StudentLogin, StudentProfile
+from models import SuperAdminRegister, DriverRegister, StudentRegister, StudentLogin, StudentProfile,StudentSecureLogin
+
 from pymongo import MongoClient
 from jose import JWTError, jwt
 import bcrypt
