@@ -995,3 +995,67 @@ async def get_bus_status(bus_no: str, institution_code: str):
                     }
 
     return {"active": False}
+
+
+from datetime import datetime
+
+@app.get("/student/stops")
+def get_stops_for_student(student: dict = Depends(get_current_student)):
+    roll_no = student.get("sub")
+    institution_code = student.get("institutionCode")
+
+    # Get student document
+    student_doc = db["students"].find_one({"institutionCode": institution_code, "rollNo": roll_no})
+    if not student_doc:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    bus_no = student_doc.get("busNo")
+    if not bus_no:
+        raise HTTPException(status_code=404, detail="No bus assigned")
+
+    # Find active driver for this bus
+    active_driver = db["drivers"].find_one({
+        "institutionCode": institution_code,
+        "status": True
+    })
+    if not active_driver:
+        raise HTTPException(status_code=404, detail="Bus not active")
+
+    driver_location = active_driver.get("location", {})
+    if not driver_location.get("latitude") or not driver_location.get("longitude"):
+        raise HTTPException(status_code=400, detail="Driver location unavailable")
+
+    driver_id = str(active_driver["_id"])
+    institution = db["institutions"].find_one({"institutionCode": institution_code})
+
+    for bus in institution.get("buses", []):
+        if bus.get("busNo") == bus_no:
+            for journey in bus.get("journeys", []):
+                if journey.get("driverId") == driver_id:
+                    stoppages = journey.get("stoppages", [])
+
+                    # Estimate arrival time based on avg speed = 25 km/h (6.94 m/s)
+                    avg_speed = 6.94  # meters/sec
+                    from geopy.distance import geodesic
+
+                    stops_with_eta = []
+                    now = datetime.now()
+                    driver_coords = (driver_location["latitude"], driver_location["longitude"])
+
+                    for stop in stoppages:
+                        stop_coords = (stop["latitude"], stop["longitude"])
+                        dist = geodesic(driver_coords, stop_coords).meters
+                        eta_secs = int(dist / avg_speed)
+                        eta_time = (now + timedelta(seconds=eta_secs)).strftime("%H:%M")
+                        diff_minutes = eta_secs // 60
+
+                        stops_with_eta.append({
+                            "name": stop["name"],
+                            "defaultArrivalTime": stop["arrivalTime"],
+                            "estimatedArrivalTime": eta_time,
+                            "inMinutes": diff_minutes
+                        })
+
+                    return stops_with_eta
+
+    raise HTTPException(status_code=404, detail="No journey found for active driver")
