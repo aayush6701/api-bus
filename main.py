@@ -966,9 +966,15 @@ def secure_login_student(data: StudentSecureLogin):
 # main.py
 from fastapi import Depends
 from bson import ObjectId
+from fastapi import Query
+
 @app.get("/student/bus-status")
-async def get_bus_status(bus_no: str, institution_code: str):
-    # Step 1: Find active driver for this bus
+async def get_bus_status(
+    bus_no: str = Query(...),
+    institution_code: str = Query(...),
+    student: dict = Depends(get_current_student)
+):
+    # ✅ Step 1: Find active driver in the institution
     active_driver = db["drivers"].find_one({
         "institutionCode": institution_code,
         "status": True
@@ -978,20 +984,37 @@ async def get_bus_status(bus_no: str, institution_code: str):
         return {"active": False}
 
     driver_id = str(active_driver["_id"])
+    driver_location = active_driver.get("location", {})
 
-    # Step 2: Find institution and match bus and journey
+    if not driver_location.get("latitude") or not driver_location.get("longitude"):
+        return {"active": False, "message": "Driver location unavailable"}
+
+    # ✅ Step 2: Find the institution
     institution = db["institutions"].find_one({"institutionCode": institution_code})
     if not institution:
-        return {"active": False}
+        return {"active": False, "message": "Institution not found"}
 
+    # ✅ Step 3: Match bus and journey
     for bus in institution.get("buses", []):
         if bus.get("busNo") == bus_no:
             for journey in bus.get("journeys", []):
                 if journey.get("driverId") == driver_id:
+                    stoppages = journey.get("stoppages", [])
                     return {
                         "active": True,
                         "mobile": active_driver["mobile"],
-                        "journey": journey["routeName"]
+                        "journey": journey["routeName"],
+                        "location": {
+                            "latitude": driver_location["latitude"],
+                            "longitude": driver_location["longitude"]
+                        },
+                        "stoppages": [
+                            {
+                                "name": stop["name"],
+                                "latitude": stop["latitude"],
+                                "longitude": stop["longitude"]
+                            } for stop in stoppages
+                        ]
                     }
 
     return {"active": False}
