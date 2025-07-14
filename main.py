@@ -960,3 +960,38 @@ def secure_login_student(data: StudentSecureLogin):
             "journeys": student.get("journeys", [])
         }
     }
+
+
+
+# main.py
+from fastapi import Depends
+from bson import ObjectId
+@app.get("/student/bus-status")
+async def get_bus_status(bus_no: str, institution_code: str):
+    # Step 1: Find active driver for this bus
+    active_driver = db["drivers"].find_one({
+        "institutionCode": institution_code,
+        "status": True
+    })
+
+    if not active_driver:
+        return {"active": False}
+
+    driver_id = str(active_driver["_id"])
+
+    # Step 2: Find institution and match bus and journey
+    institution = db["institutions"].find_one({"institutionCode": institution_code})
+    if not institution:
+        return {"active": False}
+
+    for bus in institution.get("buses", []):
+        if bus.get("busNo") == bus_no:
+            for journey in bus.get("journeys", []):
+                if journey.get("driverId") == driver_id:
+                    return {
+                        "active": True,
+                        "mobile": active_driver["mobile"],
+                        "journey": journey["routeName"]
+                    }
+
+    return {"active": False}
