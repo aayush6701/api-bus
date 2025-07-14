@@ -997,15 +997,23 @@ async def get_bus_status(bus_no: str, institution_code: str):
     return {"active": False}
 
 
-from datetime import datetime
+from fastapi import Depends, HTTPException
+from datetime import datetime, timedelta
+from geopy.distance import geodesic
+from pymongo import MongoClient
+
+# Assuming get_current_student, db, and other imports are already set up
 
 @app.get("/student/stops")
 def get_stops_for_student(student: dict = Depends(get_current_student)):
-    roll_no = student.get("sub")
+    email = student.get("sub")  # 'sub' contains the student's email
     institution_code = student.get("institutionCode")
 
-    # Get student document
-    student_doc = db["students"].find_one({"institutionCode": institution_code, "rollNo": roll_no})
+    # ✅ FIX: Look up student by email instead of roll number
+    student_doc = db["students"].find_one({
+        "institutionCode": institution_code,
+        "email": email
+    })
     if not student_doc:
         raise HTTPException(status_code=404, detail="Student not found")
 
@@ -1013,7 +1021,7 @@ def get_stops_for_student(student: dict = Depends(get_current_student)):
     if not bus_no:
         raise HTTPException(status_code=404, detail="No bus assigned")
 
-    # Find active driver for this bus
+    # ✅ Get the active driver for the institution
     active_driver = db["drivers"].find_one({
         "institutionCode": institution_code,
         "status": True
@@ -1026,21 +1034,23 @@ def get_stops_for_student(student: dict = Depends(get_current_student)):
         raise HTTPException(status_code=400, detail="Driver location unavailable")
 
     driver_id = str(active_driver["_id"])
-    institution = db["institutions"].find_one({"institutionCode": institution_code})
 
+    institution = db["institutions"].find_one({"institutionCode": institution_code})
+    if not institution:
+        raise HTTPException(status_code=404, detail="Institution not found")
+
+    # ✅ Match bus and journey
     for bus in institution.get("buses", []):
         if bus.get("busNo") == bus_no:
             for journey in bus.get("journeys", []):
                 if journey.get("driverId") == driver_id:
                     stoppages = journey.get("stoppages", [])
 
-                    # Estimate arrival time based on avg speed = 25 km/h (6.94 m/s)
-                    avg_speed = 6.94  # meters/sec
-                    from geopy.distance import geodesic
+                    avg_speed = 6.94  # meters/second (~25 km/h)
+                    driver_coords = (driver_location["latitude"], driver_location["longitude"])
+                    now = datetime.now()
 
                     stops_with_eta = []
-                    now = datetime.now()
-                    driver_coords = (driver_location["latitude"], driver_location["longitude"])
 
                     for stop in stoppages:
                         stop_coords = (stop["latitude"], stop["longitude"])
