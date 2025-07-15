@@ -598,11 +598,21 @@ def update_driver_location(
                     print(f"🟢 Stop '{stop['name']}' marked as reached.")
                     break  # mark only one stop at a time
 
-        if updated:
-            db["drivers"].update_one(
-                {"email": email},
-                {"$set": {"ongoingJourney.stops": stops}}
-            )
+            if updated:
+                # ✅ Save updated stops
+                db["drivers"].update_one(
+                    {"email": email},
+                    {
+                        "$set": {
+                            "ongoingJourney.stops": stops,
+                            "ongoingJourney.lastReachedStop": stops[i]["name"]  # Save stop name
+                        }
+                    }
+                )
+
+                # ✅ Notify assigned students
+                notify_students(driver_doc["institutionCode"], driver_doc.get("busNo"), stops[i]["name"])
+
 
     return {"message": "Location updated successfully"}
 
@@ -1119,3 +1129,38 @@ def get_stops_for_student(student: dict = Depends(get_current_student)):
                     return stops_with_eta
 
     raise HTTPException(status_code=404, detail="No journey found for active driver")
+
+
+def notify_students(institution_code, bus_no, stop_name):
+    students = db["students"].find({
+        "institutionCode": institution_code,
+        "busNo": bus_no
+    })
+
+    for student in students:
+        db["students"].update_one(
+            {"_id": student["_id"]},
+            {
+                "$set": {
+                    "notifications.stopReached": stop_name,
+                    "notifications.timestamp": datetime.utcnow()
+                }
+            }
+        )
+        print(f"🔔 Notified {student.get('email') or student.get('rollNo')} about stop: {stop_name}")
+
+
+@app.get("/student/notifications")
+def get_student_notification(student: dict = Depends(get_current_student)):
+    email = student["sub"]
+    institution_code = student["institutionCode"]
+
+    doc = db["students"].find_one({
+        "email": email,
+        "institutionCode": institution_code
+    })
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    return doc.get("notifications", {})
