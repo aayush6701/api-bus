@@ -1125,8 +1125,114 @@ def get_student_notification(student: dict = Depends(get_current_student)):
 
 
 
+@app.delete("/bus/delete")
+def delete_bus(data: dict = Body(...), superadmin: dict = Depends(get_current_superadmin)):
+    institution_code = data.get("institutionCode")
+    bus_no = data.get("busNo")
+
+    result = db["institutions"].update_one(
+        {"institutionCode": institution_code},
+        {"$pull": {"buses": {"busNo": bus_no}}}
+    )
+
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Bus not found")
+
+    return {"message": "Bus deleted successfully"}
 
 
+@app.put("/bus/update")
+def update_bus(data: dict = Body(...), superadmin: dict = Depends(get_current_superadmin)):
+    institution_code = data.get("institutionCode")
+    bus_no = data.get("busNo")
+
+    # Find the institution and specific bus
+    institution = db["institutions"].find_one({"institutionCode": institution_code})
+    if not institution:
+        raise HTTPException(status_code=404, detail="Institution not found")
+
+    buses = institution.get("buses", [])
+    updated = False
+    for i, bus in enumerate(buses):
+        if bus.get("busNo") == bus_no:
+            # Update the bus at this index
+            buses[i] = {
+                "busNo": data.get("busNo"),
+                "model": data.get("model"),
+                "color": data.get("color"),
+                "vehicleNo": data.get("vehicleNo"),
+                "fuelType": data.get("fuelType"),
+                "fuelCapacity": data.get("fuelCapacity"),
+                "mileage": data.get("mileage"),
+                "seatingCapacity": data.get("seatingCapacity"),
+                "journeys": []
+            }
+
+            for j_index, journey in enumerate(data.get("journeys", []), start=1):
+                driver = db.drivers.find_one({
+                    "institutionCode": institution_code,
+                    "name": journey.get("driverName")
+                })
+                if not driver:
+                    raise HTTPException(status_code=404, detail=f"Driver '{journey.get('driverName')}' not found")
+
+                journey_obj = {
+                    "sequence": j_index,
+                    "routeName": journey.get("routeName"),
+                    "driverId": str(driver["_id"]),
+                    "startLocation": journey.get("startLocation"),
+                    "endLocation": journey.get("endLocation"),
+                    "startTime": journey.get("startTime"),
+                    "endTime": journey.get("endTime"),
+                    "totalDistance": journey.get("totalDistance"),
+                    "stoppages": []
+                }
+
+                for s_index, stop in enumerate(journey.get("stoppages", []), start=1):
+                    journey_obj["stoppages"].append({
+                        "sequence": s_index,
+                        "name": stop.get("name"),
+                        "latitude": stop.get("latitude"),
+                        "longitude": stop.get("longitude"),
+                        "arrivalTime": stop.get("arrivalTime")
+                    })
+
+                buses[i]["journeys"].append(journey_obj)
+            updated = True
+            break
+
+    if not updated:
+        raise HTTPException(status_code=404, detail="Bus not found")
+
+    # Save updated buses list
+    db["institutions"].update_one(
+        {"institutionCode": institution_code},
+        {"$set": {"buses": buses}}
+    )
+
+    return {"message": "Bus updated successfully"}
+
+
+@app.get("/superadmin/all-buses")
+def get_all_buses(superadmin: dict = Depends(get_current_superadmin)):
+    institutions = list(db["institutions"].find({}))
+    bus_data = []
+
+    for inst in institutions:
+        institution_name = inst.get("name")
+        institution_code = inst.get("institutionCode")
+        for bus in inst.get("buses", []):
+            bus_data.append({
+                "institutionName": institution_name,
+                "institutionCode": institution_code,
+                "busNo": bus.get("busNo"),
+                "model": bus.get("model"),
+                "vehicleNo": bus.get("vehicleNo"),
+                "fuelType": bus.get("fuelType"),
+                "journeys": bus.get("journeys", [])
+            })
+
+    return bus_data
 
 # @app.get("/student/bus-status")
 # async def get_bus_status(
