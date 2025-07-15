@@ -978,57 +978,6 @@ from fastapi import Depends
 from bson import ObjectId
 from fastapi import Query
 
-# @app.get("/student/bus-status")
-# async def get_bus_status(
-#     bus_no: str = Query(...),
-#     institution_code: str = Query(...),
-#     student: dict = Depends(get_current_student)
-# ):
-#     # ✅ Step 1: Find active driver in the institution
-#     active_driver = db["drivers"].find_one({
-#         "institutionCode": institution_code,
-#         "status": True
-#     })
-
-#     if not active_driver:
-#         return {"active": False}
-
-#     driver_id = str(active_driver["_id"])
-#     driver_location = active_driver.get("location", {})
-
-#     if not driver_location.get("latitude") or not driver_location.get("longitude"):
-#         return {"active": False, "message": "Driver location unavailable"}
-
-#     # ✅ Step 2: Find the institution
-#     institution = db["institutions"].find_one({"institutionCode": institution_code})
-#     if not institution:
-#         return {"active": False, "message": "Institution not found"}
-
-#     # ✅ Step 3: Match bus and journey
-#     for bus in institution.get("buses", []):
-#         if bus.get("busNo") == bus_no:
-#             for journey in bus.get("journeys", []):
-#                 if journey.get("driverId") == driver_id:
-#                     stoppages = journey.get("stoppages", [])
-#                     return {
-#                         "active": True,
-#                         "mobile": active_driver["mobile"],
-#                         "journey": journey["routeName"],
-#                         "location": {
-#                             "latitude": driver_location["latitude"],
-#                             "longitude": driver_location["longitude"]
-#                         },
-#                         "stoppages": [
-#                             {
-#                                 "name": stop["name"],
-#                                 "latitude": stop["latitude"],
-#                                 "longitude": stop["longitude"]
-#                             } for stop in stoppages
-#                         ]
-#                     }
-
-#     return {"active": False}
-
 
 @app.get("/student/bus-status")
 def get_bus_status(bus_no: str, institution_code: str):
@@ -1112,6 +1061,10 @@ def get_stops_for_student(student: dict = Depends(get_current_student)):
 
                     stops_with_eta = []
 
+                    # 🔄 Get latest stopReached from student's notifications
+                    student_notification = student_doc.get("notifications", {})
+                    stop_reached_name = student_notification.get("stopReached")
+
                     for stop in stoppages:
                         stop_coords = (stop["latitude"], stop["longitude"])
                         dist = geodesic(driver_coords, stop_coords).meters
@@ -1119,12 +1072,17 @@ def get_stops_for_student(student: dict = Depends(get_current_student)):
                         eta_time = (now + timedelta(seconds=eta_secs)).strftime("%H:%M")
                         diff_minutes = eta_secs // 60
 
+                        # ✅ Determine if this stop is already reached
+                        reached = stop["name"] == stop_reached_name
+
                         stops_with_eta.append({
                             "name": stop["name"],
                             "defaultArrivalTime": stop["arrivalTime"],
                             "estimatedArrivalTime": eta_time,
-                            "inMinutes": diff_minutes
+                            "inMinutes": diff_minutes,
+                            "reached": reached
                         })
+
 
                     return stops_with_eta
 
@@ -1164,3 +1122,59 @@ def get_student_notification(student: dict = Depends(get_current_student)):
         raise HTTPException(status_code=404, detail="Student not found")
 
     return doc.get("notifications", {})
+
+
+
+
+
+
+# @app.get("/student/bus-status")
+# async def get_bus_status(
+#     bus_no: str = Query(...),
+#     institution_code: str = Query(...),
+#     student: dict = Depends(get_current_student)
+# ):
+#     # ✅ Step 1: Find active driver in the institution
+#     active_driver = db["drivers"].find_one({
+#         "institutionCode": institution_code,
+#         "status": True
+#     })
+
+#     if not active_driver:
+#         return {"active": False}
+
+#     driver_id = str(active_driver["_id"])
+#     driver_location = active_driver.get("location", {})
+
+#     if not driver_location.get("latitude") or not driver_location.get("longitude"):
+#         return {"active": False, "message": "Driver location unavailable"}
+
+#     # ✅ Step 2: Find the institution
+#     institution = db["institutions"].find_one({"institutionCode": institution_code})
+#     if not institution:
+#         return {"active": False, "message": "Institution not found"}
+
+#     # ✅ Step 3: Match bus and journey
+#     for bus in institution.get("buses", []):
+#         if bus.get("busNo") == bus_no:
+#             for journey in bus.get("journeys", []):
+#                 if journey.get("driverId") == driver_id:
+#                     stoppages = journey.get("stoppages", [])
+#                     return {
+#                         "active": True,
+#                         "mobile": active_driver["mobile"],
+#                         "journey": journey["routeName"],
+#                         "location": {
+#                             "latitude": driver_location["latitude"],
+#                             "longitude": driver_location["longitude"]
+#                         },
+#                         "stoppages": [
+#                             {
+#                                 "name": stop["name"],
+#                                 "latitude": stop["latitude"],
+#                                 "longitude": stop["longitude"]
+#                             } for stop in stoppages
+#                         ]
+#                     }
+
+#     return {"active": False}
