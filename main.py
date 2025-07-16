@@ -487,7 +487,7 @@ def login_driver(form_data: OAuth2PasswordRequestForm = Depends()):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     driver_id = str(driver["_id"])
-    db["drivers"].update_one({"_id": driver["_id"]}, {"$set": {"status": True}})
+    # db["drivers"].update_one({"_id": driver["_id"]}, {"$set": {"status": True}})
 
     # ✅ Find the bus assigned to this driver
     bus_entry = db["institutions"].find_one(
@@ -735,10 +735,48 @@ def get_driver_journeys(driver: dict = Depends(get_current_driver)):
 
 from fastapi import Request
 
+# @app.post("/driver/start-journey")
+# async def start_journey(request: Request, driver_token: dict = Depends(get_current_driver)):
+#     data = await request.json()
+#     route_name = data.get("routeName")
+#     driver_email = driver_token["sub"]
+
+#     # Fetch driver
+#     driver = db["drivers"].find_one({"email": driver_email})
+#     if not driver:
+#         raise HTTPException(status_code=404, detail="Driver not found")
+
+#     driver_id = str(driver["_id"])
+
+#     # Find assigned journey
+#     institution = db["institutions"].find_one({"buses.journeys.driverId": driver_id})
+#     if not institution:
+#         raise HTTPException(status_code=404, detail="No journey found")
+
+#     for bus in institution["buses"]:
+#         for journey in bus["journeys"]:
+#             if journey["driverId"] == driver_id and journey["routeName"] == route_name:
+#                 stops = [{
+#                     "name": s["name"],
+#                     "latitude": s["latitude"],
+#                     "longitude": s["longitude"],
+#                     "status": False,
+#                     "alert": False 
+#                 } for s in journey["stoppages"]]
+#                 db["drivers"].update_one(
+#                     {"email": driver_email},
+#                     {"$set": {"ongoingJourney": {"routeName": route_name, "stoppages": stops}}}
+#                 )
+#                 return {"message": "Journey started"}
+#     raise HTTPException(status_code=404, detail="Matching journey not found")
+
 @app.post("/driver/start-journey")
 async def start_journey(request: Request, driver_token: dict = Depends(get_current_driver)):
     data = await request.json()
     route_name = data.get("routeName")
+    latitude = data.get("latitude")
+    longitude = data.get("longitude")
+
     driver_email = driver_token["sub"]
 
     # Fetch driver
@@ -763,13 +801,22 @@ async def start_journey(request: Request, driver_token: dict = Depends(get_curre
                     "status": False,
                     "alert": False 
                 } for s in journey["stoppages"]]
+
+                # ✅ Update driver's journey, status and location
                 db["drivers"].update_one(
                     {"email": driver_email},
-                    {"$set": {"ongoingJourney": {"routeName": route_name, "stoppages": stops}}}
+                    {
+                        "$set": {
+                            "status": True,
+                            "latitude": latitude,
+                            "longitude": longitude,
+                            "ongoingJourney": {"routeName": route_name, "stoppages": stops}
+                        }
+                    }
                 )
                 return {"message": "Journey started"}
+    
     raise HTTPException(status_code=404, detail="Matching journey not found")
-
 
 @app.post("/driver/stop-journey")
 def stop_journey(driver_token: dict = Depends(get_current_driver)):
