@@ -1234,6 +1234,48 @@ def get_all_buses(superadmin: dict = Depends(get_current_superadmin)):
 
     return bus_data
 
+
+from models import StopReachedRequest
+
+@app.post("/driver/mark-stop-reached")
+def mark_stop_as_reached(
+    data: StopReachedRequest,
+    driver: dict = Depends(get_current_driver)
+):
+    driver_email = driver["sub"]
+    driver_doc = db["drivers"].find_one({"email": driver_email})
+
+    if not driver_doc:
+        raise HTTPException(status_code=404, detail="Driver not found")
+
+    ongoing = driver_doc.get("ongoingJourney")
+    if not ongoing or ongoing.get("routeName") != data.routeName:
+        raise HTTPException(status_code=400, detail="No matching journey found")
+
+    stops = ongoing.get("stoppages", [])
+    updated = False
+
+    for i, stop in enumerate(stops):
+        if stop["name"] == data.stopName:
+            stops[i]["status"] = True
+            db["drivers"].update_one(
+                {"email": driver_email},
+                {
+                    "$set": {
+                        "ongoingJourney.stoppages": stops,
+                        "ongoingJourney.lastReachedStop": stop["name"]
+                    }
+                }
+            )
+            notify_students(driver_doc["institutionCode"], driver_doc["busNo"], stop["name"])
+            updated = True
+            break
+
+    if not updated:
+        raise HTTPException(status_code=404, detail="Stop not found in journey")
+
+    return {"message": f"Stop '{data.stopName}' marked as reached"}
+
 # @app.get("/student/bus-status")
 # async def get_bus_status(
 #     bus_no: str = Query(...),

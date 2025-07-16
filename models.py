@@ -58,3 +58,9 @@ class StudentSecureLogin(BaseModel):
     institutionCode: str
     email: str
     password: str
+
+
+
+class StopReachedRequest(BaseModel):
+    routeName: str
+    stopName: str
