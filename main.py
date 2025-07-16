@@ -556,7 +556,7 @@ from geopy.distance import geodesic
 
 @app.post("/driver/update-location")
 def update_driver_location(location: LocationUpdate, current_driver: dict = Depends(get_current_driver)):
-    email = current_driver["email"]
+    email = current_driver["sub"]
     
     db["drivers"].update_one(
         {"email": email},
