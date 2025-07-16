@@ -555,68 +555,60 @@ from fastapi import HTTPException
 from geopy.distance import geodesic
 
 @app.post("/driver/update-location")
-def update_driver_location(
-    location: LocationUpdate,
-    driver: dict = Depends(get_current_driver)
-):
-    print("🔒 Token payload:", driver)
-    print("📍 Location received:", location.dict())
-
-    email = driver.get("sub")
-    if not email:
-        print("❌ Missing email in token")
-        raise HTTPException(status_code=400, detail="Invalid token")
-
-    # Update driver's current location
-    result = db["drivers"].update_one(
+def update_driver_location(location: LocationUpdate, current_driver: dict = Depends(get_current_driver)):
+    email = current_driver["email"]
+    
+    db["drivers"].update_one(
         {"email": email},
-        {"$set": {
-            "location.latitude": location.latitude,
-            "location.longitude": location.longitude
-        }}
+        {
+            "$set": {
+                "location.latitude": location.latitude,
+                "location.longitude": location.longitude,
+                "status": True
+            }
+        }
     )
 
-    print(f"📦 MongoDB Update result: matched={result.matched_count}, modified={result.modified_count}")
-
-    # Fetch driver document again to access journey
     driver_doc = db["drivers"].find_one({"email": email})
     ongoing = driver_doc.get("ongoingJourney")
 
     if ongoing:
-        stops = ongoing.get("stoppages", [])
-
+        stops = ongoing.get("stoppages", [])  # ✅ Correct field
         updated = False
 
         for i, stop in enumerate(stops):
             if not stop.get("status"):
-                stop_coords = (stop["latitude"], stop["longitude"])
-                driver_coords = (location.latitude, location.longitude)
-                distance = geodesic(driver_coords, stop_coords).meters
+                try:
+                    stop_lat = float(stop["latitude"])  # ✅ Cast to float
+                    stop_lon = float(stop["longitude"])
+                    stop_coords = (stop_lat, stop_lon)
+                    driver_coords = (location.latitude, location.longitude)
+                    distance = geodesic(driver_coords, stop_coords).meters
 
-                if distance < 50:  # within 50 meters
-                    stops[i]["status"] = True
-                    updated = True
-                    print(f"🟢 Stop '{stop['name']}' marked as reached.")
-                    break  # mark only one stop at a time
+                    print(f"📏 Distance to stop {stop['name']}: {distance:.2f} meters")
 
-            if updated:
-                # ✅ Save updated stops
-                db["drivers"].update_one(
-                    {"email": email},
-                    {
-                        "$set": {
-                            "ongoingJourney.stoppages": stops,
-                            "ongoingJourney.lastReachedStop": stops[i]["name"]
-                        }
+                    if distance < 50:
+                        stops[i]["status"] = True
+                        updated = True
+                        print(f"🟢 Stop '{stop['name']}' marked as reached.")
+                        break  # ✅ Only mark one stop at a time
+
+                except Exception as e:
+                    print(f"❌ Error processing stop {stop.get('name', '?')}: {e}")
+
+        if updated:
+            db["drivers"].update_one(
+                {"email": email},
+                {
+                    "$set": {
+                        "ongoingJourney.stoppages": stops,
+                        "ongoingJourney.lastReachedStop": stops[i]["name"]
                     }
-                )
+                }
+            )
+            notify_students(driver_doc["institutionCode"], driver_doc.get("busNo"), stops[i]["name"])
 
-
-                # ✅ Notify assigned students
-                notify_students(driver_doc["institutionCode"], driver_doc.get("busNo"), stops[i]["name"])
-
-
-    return {"message": "Location updated successfully"}
+    return {"message": "Location updated"}
 
 @app.get("/driver/upcoming-journey")
 async def get_upcoming_journey(driver: dict = Depends(get_current_driver)):
