@@ -760,7 +760,8 @@ async def start_journey(request: Request, driver_token: dict = Depends(get_curre
                     "name": s["name"],
                     "latitude": s["latitude"],
                     "longitude": s["longitude"],
-                    "status": False
+                    "status": False,
+                    "alert": False 
                 } for s in journey["stoppages"]]
                 db["drivers"].update_one(
                     {"email": driver_email},
@@ -977,31 +978,46 @@ from fastapi import Depends
 from bson import ObjectId
 from fastapi import Query
 
+from bson import ObjectId
+from fastapi import Query
 
 @app.get("/student/bus-status")
-def get_bus_status(bus_no: str, institution_code: str):
-    institution = db["institutions"].find_one(
-        {"institutionCode": institution_code}
-    )
-
+def get_bus_status(bus_no: str = Query(...), institution_code: str = Query(...)):
+    institution = db["institutions"].find_one({"institutionCode": institution_code})
     if not institution:
         raise HTTPException(status_code=404, detail="Institution not found")
 
-    # Find bus and driver assigned
+    # Find the bus and assigned driver
     for bus in institution.get("buses", []):
         if bus.get("busNo") == bus_no:
             for journey in bus.get("journeys", []):
                 driver_id = journey.get("driverId")
                 driver = db["drivers"].find_one({"_id": ObjectId(driver_id)})
+
                 if driver:
-                    return {
+                    response = {
                         "active": driver["status"],
                         "mobile": driver["mobile"],
                         "journey": journey.get("routeName"),
                         "latitude": driver["location"].get("latitude"),
                         "longitude": driver["location"].get("longitude"),
-                        "stoppages": journey.get("stoppages", [])
                     }
+
+                    # 🟢 Use driver's live ongoingJourney if available
+                    ongoing = driver.get("ongoingJourney")
+                    if ongoing and ongoing.get("routeName") == journey.get("routeName"):
+                        response["stoppages"] = ongoing.get("stoppages", [])
+                    else:
+                        # Fall back to static data if not live
+                        response["stoppages"] = [
+                            {
+                                **stop,
+                                "status": False,
+                                "alert": False
+                            } for stop in journey.get("stoppages", [])
+                        ]
+
+                    return response
 
     raise HTTPException(status_code=404, detail="Bus/journey/driver not found")
 
