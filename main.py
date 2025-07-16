@@ -1249,3 +1249,33 @@ def get_all_buses(superadmin: dict = Depends(get_current_superadmin)):
 
     return bus_data
 
+
+@app.post("/student/mark-alert")
+def mark_alert(stop_name: str = Query(...), bus_no: str = Query(...), institution_code: str = Query(...)):
+    # Find the driver with active status on this bus
+    driver = db["drivers"].find_one({
+        "institutionCode": institution_code,
+        "status": True,
+        "ongoingJourney.stoppages.name": stop_name
+    })
+
+    if not driver:
+        raise HTTPException(status_code=404, detail="Active driver not found with that stop")
+
+    stoppages = driver["ongoingJourney"]["stoppages"]
+    updated = False
+
+    for stop in stoppages:
+        if stop["name"] == stop_name:
+            stop["alert"] = True
+            updated = True
+            break
+
+    if updated:
+        db["drivers"].update_one(
+            {"_id": driver["_id"]},
+            {"$set": {"ongoingJourney.stoppages": stoppages}}
+        )
+        return {"message": f"Alert marked true for stop {stop_name}"}
+    else:
+        raise HTTPException(status_code=404, detail="Stop not found")
