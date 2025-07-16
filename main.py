@@ -1257,12 +1257,17 @@ def mark_nearby_stop(
 
     for i, stop in enumerate(stops):
         if not stop.get("status"):
+            # 🔒 Safety check before accessing keys
+            if "latitude" not in stop or "longitude" not in stop:
+                continue
+
             stop_coords = (stop["latitude"], stop["longitude"])
             driver_coords = (location.latitude, location.longitude)
             distance = geodesic(driver_coords, stop_coords).meters
 
             if distance < 50:
                 stops[i]["status"] = True
+                updated = True
                 db["drivers"].update_one(
                     {"email": driver_email},
                     {
