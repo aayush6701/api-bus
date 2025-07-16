@@ -583,7 +583,8 @@ def update_driver_location(
     ongoing = driver_doc.get("ongoingJourney")
 
     if ongoing:
-        stops = ongoing.get("stops", [])
+        stops = ongoing.get("stoppages", [])
+
         updated = False
 
         for i, stop in enumerate(stops):
@@ -604,11 +605,12 @@ def update_driver_location(
                     {"email": email},
                     {
                         "$set": {
-                            "ongoingJourney.stops": stops,
-                            "ongoingJourney.lastReachedStop": stops[i]["name"]  # Save stop name
+                            "ongoingJourney.stoppages": stops,
+                            "ongoingJourney.lastReachedStop": stops[i]["name"]
                         }
                     }
                 )
+
 
                 # ✅ Notify assigned students
                 notify_students(driver_doc["institutionCode"], driver_doc.get("busNo"), stops[i]["name"])
