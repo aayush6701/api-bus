@@ -60,7 +60,3 @@ class StudentSecureLogin(BaseModel):
     password: str
 
 
-
-class StopReachedRequest(BaseModel):
-    routeName: str
-    stopName: str

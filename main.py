@@ -762,7 +762,12 @@ async def start_journey(request: Request, driver_token: dict = Depends(get_curre
     for bus in institution["buses"]:
         for journey in bus["journeys"]:
             if journey["driverId"] == driver_id and journey["routeName"] == route_name:
-                stops = [{"name": s["name"], "status": False} for s in journey["stoppages"]]
+                stops = [{
+                    "name": s["name"],
+                    "latitude": s["latitude"],
+                    "longitude": s["longitude"],
+                    "status": False
+                } for s in journey["stoppages"]]
                 db["drivers"].update_one(
                     {"email": driver_email},
                     {"$set": {"ongoingJourney": {"routeName": route_name, "stoppages": stops}}}
@@ -1234,101 +1239,3 @@ def get_all_buses(superadmin: dict = Depends(get_current_superadmin)):
 
     return bus_data
 
-
-@app.post("/driver/mark-nearby-stop")
-def mark_nearby_stop(
-    location: LocationUpdate,
-    driver: dict = Depends(get_current_driver)
-):
-    driver_email = driver.get("sub")
-    if not driver_email:
-        raise HTTPException(status_code=400, detail="Invalid token")
-
-    driver_doc = db["drivers"].find_one({"email": driver_email})
-    if not driver_doc:
-        raise HTTPException(status_code=404, detail="Driver not found")
-
-    ongoing = driver_doc.get("ongoingJourney")
-    if not ongoing:
-        return {"message": "No ongoing journey"}
-
-    stops = ongoing.get("stoppages", [])
-    updated = False
-
-    for i, stop in enumerate(stops):
-        if not stop.get("status"):
-            # 🔒 Safety check before accessing keys
-            if "latitude" not in stop or "longitude" not in stop:
-                continue
-
-            stop_coords = (stop["latitude"], stop["longitude"])
-            driver_coords = (location.latitude, location.longitude)
-            distance = geodesic(driver_coords, stop_coords).meters
-
-            if distance < 50:
-                stops[i]["status"] = True
-                updated = True
-                db["drivers"].update_one(
-                    {"email": driver_email},
-                    {
-                        "$set": {
-                            "ongoingJourney.stoppages": stops,
-                            "ongoingJourney.lastReachedStop": stop["name"]
-                        }
-                    }
-                )
-                notify_students(driver_doc["institutionCode"], driver_doc["busNo"], stop["name"])
-                return {"message": f"Stop '{stop['name']}' marked as reached"}
-
-    return {"message": "No nearby stop found within 50 meters"}
-
-# @app.get("/student/bus-status")
-# async def get_bus_status(
-#     bus_no: str = Query(...),
-#     institution_code: str = Query(...),
-#     student: dict = Depends(get_current_student)
-# ):
-#     # ✅ Step 1: Find active driver in the institution
-#     active_driver = db["drivers"].find_one({
-#         "institutionCode": institution_code,
-#         "status": True
-#     })
-
-#     if not active_driver:
-#         return {"active": False}
-
-#     driver_id = str(active_driver["_id"])
-#     driver_location = active_driver.get("location", {})
-
-#     if not driver_location.get("latitude") or not driver_location.get("longitude"):
-#         return {"active": False, "message": "Driver location unavailable"}
-
-#     # ✅ Step 2: Find the institution
-#     institution = db["institutions"].find_one({"institutionCode": institution_code})
-#     if not institution:
-#         return {"active": False, "message": "Institution not found"}
-
-#     # ✅ Step 3: Match bus and journey
-#     for bus in institution.get("buses", []):
-#         if bus.get("busNo") == bus_no:
-#             for journey in bus.get("journeys", []):
-#                 if journey.get("driverId") == driver_id:
-#                     stoppages = journey.get("stoppages", [])
-#                     return {
-#                         "active": True,
-#                         "mobile": active_driver["mobile"],
-#                         "journey": journey["routeName"],
-#                         "location": {
-#                             "latitude": driver_location["latitude"],
-#                             "longitude": driver_location["longitude"]
-#                         },
-#                         "stoppages": [
-#                             {
-#                                 "name": stop["name"],
-#                                 "latitude": stop["latitude"],
-#                                 "longitude": stop["longitude"]
-#                             } for stop in stoppages
-#                         ]
-#                     }
-
-#     return {"active": False}
