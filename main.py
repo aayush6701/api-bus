@@ -809,41 +809,50 @@ from fastapi import Request
 #     raise HTTPException(status_code=404, detail="Matching journey not found")
 
 
+
 @app.post("/driver/start-journey")
 def start_journey(data: StartJourney, driver_token: dict = Depends(get_current_driver)):
     driver_email = driver_token["sub"]
 
-    # Extract route info and find stops as you already do
-    institution = db["institutions"].find_one({"buses.bus_no": data.bus_no})
-    if not institution:
-        raise HTTPException(status_code=404, detail="Bus not found in any institution")
+    # Fetch driver and extract driver ID
+    driver = db["drivers"].find_one({"email": driver_email})
+    if not driver:
+        raise HTTPException(status_code=404, detail="Driver not found")
 
+    driver_id = str(driver["_id"])
+
+    # Find institution where the driver has an assigned journey
+    institution = db["institutions"].find_one({"buses.journeys.driverId": driver_id})
+    if not institution:
+        raise HTTPException(status_code=404, detail="No journey found for this driver")
+
+    # Locate the route with matching route name and driverId
     route = None
     for bus in institution["buses"]:
-        if bus["bus_no"] == data.bus_no:
-            for r in bus.get("routes", []):
-                if r["route_name"] == data.route_name:
-                    route = r
-                    break
+        for journey in bus.get("journeys", []):
+            if journey["driverId"] == driver_id and journey["routeName"] == data.route_name:
+                route = journey
+                break
+        if route:
             break
 
     if not route:
-        raise HTTPException(status_code=404, detail="Route not found")
+        raise HTTPException(status_code=404, detail="Matching route not found for this driver")
 
-    # Build stoppages data
+    # Build stoppages list
     stops = []
-    for stop in route["stoppages"]:
+    for stop in route.get("stoppages", []):
         stops.append({
             "name": stop["name"],
             "latitude": stop["latitude"],
             "longitude": stop["longitude"],
-            "arrivalTime": stop["arrivalTime"],
+            "arrivalTime": stop.get("arrivalTime"),
             "returnTime": stop.get("returnTime", ""),
             "status": False,
             "alert": False
         })
 
-    # ✅ Only update ongoingJourney, not status or location
+    # Update driver's ongoingJourney field only
     db["drivers"].update_one(
         {"email": driver_email},
         {
@@ -857,8 +866,7 @@ def start_journey(data: StartJourney, driver_token: dict = Depends(get_current_d
         }
     )
 
-    return {"message": "Journey started, but status and location not set"}
-
+    return {"message": "Journey started successfully"}
 
 @app.post("/driver/mark-online")
 def mark_driver_online(data: MarkOnline, driver_token: dict = Depends(get_current_driver)):

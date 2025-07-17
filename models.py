@@ -62,7 +62,6 @@ class StudentSecureLogin(BaseModel):
 
 class StartJourney(BaseModel):
     route_name: str
-    bus_no: str
 
 
 class MarkOnline(BaseModel):
