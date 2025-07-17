@@ -549,67 +549,6 @@ def get_driver_profile(driver_token: dict = Depends(get_current_driver)):
     return driver
 
 
-from models import LocationUpdate
-
-from fastapi import HTTPException
-from geopy.distance import geodesic
-
-# @app.post("/driver/update-location")
-# def update_driver_location(location: LocationUpdate, current_driver: dict = Depends(get_current_driver)):
-#     email = current_driver["sub"]
-    
-#     db["drivers"].update_one(
-#         {"email": email},
-#         {
-#             "$set": {
-#                 "location.latitude": location.latitude,
-#                 "location.longitude": location.longitude,
-#                 "status": True
-#             }
-#         }
-#     )
-
-#     driver_doc = db["drivers"].find_one({"email": email})
-#     ongoing = driver_doc.get("ongoingJourney")
-
-#     if ongoing:
-#         stops = ongoing.get("stoppages", [])  # ✅ Correct field
-#         updated = False
-
-#         for i, stop in enumerate(stops):
-#             if not stop.get("status"):
-#                 try:
-#                     stop_lat = float(stop["latitude"])  # ✅ Cast to float
-#                     stop_lon = float(stop["longitude"])
-#                     stop_coords = (stop_lat, stop_lon)
-#                     driver_coords = (location.latitude, location.longitude)
-#                     distance = geodesic(driver_coords, stop_coords).meters
-
-#                     print(f"📏 Distance to stop {stop['name']}: {distance:.2f} meters")
-
-#                     if distance < 50:
-#                         stops[i]["status"] = True
-#                         updated = True
-#                         print(f"🟢 Stop '{stop['name']}' marked as reached.")
-#                         break  # ✅ Only mark one stop at a time
-
-#                 except Exception as e:
-#                     print(f"❌ Error processing stop {stop.get('name', '?')}: {e}")
-
-#         if updated:
-#             db["drivers"].update_one(
-#                 {"email": email},
-#                 {
-#                     "$set": {
-#                         "ongoingJourney.stoppages": stops,
-#                         "ongoingJourney.lastReachedStop": stops[i]["name"]
-#                     }
-#                 }
-#             )
-#             notify_students(driver_doc["institutionCode"], driver_doc.get("busNo"), stops[i]["name"])
-
-#     return {"message": "Location updated"}
-
 from datetime import datetime
 from geopy.distance import geodesic
 from fastapi import Depends
@@ -659,8 +598,9 @@ def update_driver_location(location: LocationUpdate, current_driver: dict = Depe
                         if i == len(stops) - 1:
                             print("✅ Final stop reached. Switching to return mode.")
                             for s in stops:
-                                s["status"] = True
-                                s["alert"] = True
+                                s["status"] = False
+                                s["alert"] = False
+
 
                             db["drivers"].update_one(
                                 {"email": email},
@@ -818,55 +758,130 @@ def get_driver_journeys(driver: dict = Depends(get_current_driver)):
 
 from fastapi import Request
 
-@app.post("/driver/start-journey")
-async def start_journey(request: Request, driver_token: dict = Depends(get_current_driver)):
-    data = await request.json()
-    route_name = data.get("routeName")
-    latitude = data.get("latitude")
-    longitude = data.get("longitude")
+# @app.post("/driver/start-journey")
+# async def start_journey(request: Request, driver_token: dict = Depends(get_current_driver)):
+#     data = await request.json()
+#     route_name = data.get("routeName")
+#     latitude = data.get("latitude")
+#     longitude = data.get("longitude")
 
+#     driver_email = driver_token["sub"]
+
+#     # Fetch driver
+#     driver = db["drivers"].find_one({"email": driver_email})
+#     if not driver:
+#         raise HTTPException(status_code=404, detail="Driver not found")
+
+#     driver_id = str(driver["_id"])
+
+#     # Find assigned journey
+#     institution = db["institutions"].find_one({"buses.journeys.driverId": driver_id})
+#     if not institution:
+#         raise HTTPException(status_code=404, detail="No journey found")
+
+#     for bus in institution["buses"]:
+#         for journey in bus["journeys"]:
+#             if journey["driverId"] == driver_id and journey["routeName"] == route_name:
+#                 stops = [{
+#                     "name": s["name"],
+#                     "latitude": s["latitude"],
+#                     "longitude": s["longitude"],
+#                     "arrivalTime": s.get("arrivalTime"),
+#                     "returnTime": s.get("returnTime"),
+#                     "status": False,
+#                     "alert": False 
+#                 } for s in journey["stoppages"]]
+
+#                 # ✅ Update driver's journey, status and location
+#                 db["drivers"].update_one(
+#                     {"email": driver_email},
+#                     {
+#                         "$set": {
+#                             "status": True,
+#                             "location.latitude": latitude,
+#                             "location.longitude": longitude,
+#                             "ongoingJourney": {"routeName": route_name,  "return": False, "stoppages": stops}
+#                         }
+#                     }
+#                 )
+#                 return {"message": "Journey started"}
+    
+#     raise HTTPException(status_code=404, detail="Matching journey not found")
+
+
+@app.post("/driver/start-journey")
+def start_journey(data: StartJourney, driver_token: dict = Depends(get_current_driver)):
     driver_email = driver_token["sub"]
 
-    # Fetch driver
-    driver = db["drivers"].find_one({"email": driver_email})
-    if not driver:
-        raise HTTPException(status_code=404, detail="Driver not found")
-
-    driver_id = str(driver["_id"])
-
-    # Find assigned journey
-    institution = db["institutions"].find_one({"buses.journeys.driverId": driver_id})
+    # Extract route info and find stops as you already do
+    institution = db["institutions"].find_one({"buses.bus_no": data.bus_no})
     if not institution:
-        raise HTTPException(status_code=404, detail="No journey found")
+        raise HTTPException(status_code=404, detail="Bus not found in any institution")
 
+    route = None
     for bus in institution["buses"]:
-        for journey in bus["journeys"]:
-            if journey["driverId"] == driver_id and journey["routeName"] == route_name:
-                stops = [{
-                    "name": s["name"],
-                    "latitude": s["latitude"],
-                    "longitude": s["longitude"],
-                    "arrivalTime": s.get("arrivalTime"),
-                    "returnTime": s.get("returnTime"),
-                    "status": False,
-                    "alert": False 
-                } for s in journey["stoppages"]]
+        if bus["bus_no"] == data.bus_no:
+            for r in bus.get("routes", []):
+                if r["route_name"] == data.route_name:
+                    route = r
+                    break
+            break
 
-                # ✅ Update driver's journey, status and location
-                db["drivers"].update_one(
-                    {"email": driver_email},
-                    {
-                        "$set": {
-                            "status": True,
-                            "location.latitude": latitude,
-                            "location.longitude": longitude,
-                            "ongoingJourney": {"routeName": route_name,  "return": False, "stoppages": stops}
-                        }
-                    }
-                )
-                return {"message": "Journey started"}
-    
-    raise HTTPException(status_code=404, detail="Matching journey not found")
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    # Build stoppages data
+    stops = []
+    for stop in route["stoppages"]:
+        stops.append({
+            "name": stop["name"],
+            "latitude": stop["latitude"],
+            "longitude": stop["longitude"],
+            "arrivalTime": stop["arrivalTime"],
+            "returnTime": stop.get("returnTime", ""),
+            "status": False,
+            "alert": False
+        })
+
+    # ✅ Only update ongoingJourney, not status or location
+    db["drivers"].update_one(
+        {"email": driver_email},
+        {
+            "$set": {
+                "ongoingJourney": {
+                    "routeName": data.route_name,
+                    "return": False,
+                    "stoppages": stops
+                }
+            }
+        }
+    )
+
+    return {"message": "Journey started, but status and location not set"}
+
+
+from pydantic import BaseModel
+
+class MarkOnline(BaseModel):
+    latitude: float
+    longitude: float
+
+@app.post("/driver/mark-online")
+def mark_driver_online(data: MarkOnline, driver_token: dict = Depends(get_current_driver)):
+    driver_email = driver_token["sub"]
+
+    db["drivers"].update_one(
+        {"email": driver_email},
+        {
+            "$set": {
+                "status": True,
+                "location.latitude": data.latitude,
+                "location.longitude": data.longitude
+            }
+        }
+    )
+
+    return {"message": "Driver marked as online and location updated"}
 
 @app.post("/driver/stop-journey")
 def stop_journey(driver_token: dict = Depends(get_current_driver)):
