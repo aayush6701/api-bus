@@ -808,8 +808,8 @@ async def start_journey(request: Request, driver_token: dict = Depends(get_curre
                     {
                         "$set": {
                             "status": True,
-                            "latitude": latitude,
-                            "longitude": longitude,
+                            "location.latitude": latitude,
+                            "location.longitude": longitude,
                             "ongoingJourney": {"routeName": route_name, "stoppages": stops}
                         }
                     }
