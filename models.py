@@ -60,3 +60,11 @@ class StudentSecureLogin(BaseModel):
     password: str
 
 
+class StartJourney(BaseModel):
+    route_name: str
+    bus_no: str
+
+
+class MarkOnline(BaseModel):
+    latitude: float
+    longitude: float
