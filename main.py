@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
-from models import SuperAdminRegister, DriverRegister, StudentRegister, StudentLogin, StudentProfile,StudentSecureLogin
+from models import SuperAdminRegister, DriverRegister, StudentRegister, StudentLogin, StudentProfile,StudentSecureLogin,StartJourney, MarkOnline
 
 from pymongo import MongoClient
 from jose import JWTError, jwt
@@ -859,12 +859,6 @@ def start_journey(data: StartJourney, driver_token: dict = Depends(get_current_d
 
     return {"message": "Journey started, but status and location not set"}
 
-
-from pydantic import BaseModel
-
-class MarkOnline(BaseModel):
-    latitude: float
-    longitude: float
 
 @app.post("/driver/mark-online")
 def mark_driver_online(data: MarkOnline, driver_token: dict = Depends(get_current_driver)):
