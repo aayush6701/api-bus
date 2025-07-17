@@ -554,6 +554,68 @@ from models import LocationUpdate
 from fastapi import HTTPException
 from geopy.distance import geodesic
 
+# @app.post("/driver/update-location")
+# def update_driver_location(location: LocationUpdate, current_driver: dict = Depends(get_current_driver)):
+#     email = current_driver["sub"]
+    
+#     db["drivers"].update_one(
+#         {"email": email},
+#         {
+#             "$set": {
+#                 "location.latitude": location.latitude,
+#                 "location.longitude": location.longitude,
+#                 "status": True
+#             }
+#         }
+#     )
+
+#     driver_doc = db["drivers"].find_one({"email": email})
+#     ongoing = driver_doc.get("ongoingJourney")
+
+#     if ongoing:
+#         stops = ongoing.get("stoppages", [])  # ✅ Correct field
+#         updated = False
+
+#         for i, stop in enumerate(stops):
+#             if not stop.get("status"):
+#                 try:
+#                     stop_lat = float(stop["latitude"])  # ✅ Cast to float
+#                     stop_lon = float(stop["longitude"])
+#                     stop_coords = (stop_lat, stop_lon)
+#                     driver_coords = (location.latitude, location.longitude)
+#                     distance = geodesic(driver_coords, stop_coords).meters
+
+#                     print(f"📏 Distance to stop {stop['name']}: {distance:.2f} meters")
+
+#                     if distance < 50:
+#                         stops[i]["status"] = True
+#                         updated = True
+#                         print(f"🟢 Stop '{stop['name']}' marked as reached.")
+#                         break  # ✅ Only mark one stop at a time
+
+#                 except Exception as e:
+#                     print(f"❌ Error processing stop {stop.get('name', '?')}: {e}")
+
+#         if updated:
+#             db["drivers"].update_one(
+#                 {"email": email},
+#                 {
+#                     "$set": {
+#                         "ongoingJourney.stoppages": stops,
+#                         "ongoingJourney.lastReachedStop": stops[i]["name"]
+#                     }
+#                 }
+#             )
+#             notify_students(driver_doc["institutionCode"], driver_doc.get("busNo"), stops[i]["name"])
+
+#     return {"message": "Location updated"}
+
+from datetime import datetime
+from geopy.distance import geodesic
+from fastapi import Depends
+from models import LocationUpdate
+from bson import ObjectId
+
 @app.post("/driver/update-location")
 def update_driver_location(location: LocationUpdate, current_driver: dict = Depends(get_current_driver)):
     email = current_driver["sub"]
@@ -573,13 +635,13 @@ def update_driver_location(location: LocationUpdate, current_driver: dict = Depe
     ongoing = driver_doc.get("ongoingJourney")
 
     if ongoing:
-        stops = ongoing.get("stoppages", [])  # ✅ Correct field
+        stops = ongoing.get("stoppages", [])
         updated = False
 
         for i, stop in enumerate(stops):
             if not stop.get("status"):
                 try:
-                    stop_lat = float(stop["latitude"])  # ✅ Cast to float
+                    stop_lat = float(stop["latitude"])
                     stop_lon = float(stop["longitude"])
                     stop_coords = (stop_lat, stop_lon)
                     driver_coords = (location.latitude, location.longitude)
@@ -588,25 +650,46 @@ def update_driver_location(location: LocationUpdate, current_driver: dict = Depe
                     print(f"📏 Distance to stop {stop['name']}: {distance:.2f} meters")
 
                     if distance < 50:
+                        # Mark current stop as reached
                         stops[i]["status"] = True
                         updated = True
                         print(f"🟢 Stop '{stop['name']}' marked as reached.")
-                        break  # ✅ Only mark one stop at a time
+
+                        # ✅ If last stop
+                        if i == len(stops) - 1:
+                            print("✅ Final stop reached. Switching to return mode.")
+                            for s in stops:
+                                s["status"] = True
+                                s["alert"] = True
+
+                            db["drivers"].update_one(
+                                {"email": email},
+                                {
+                                    "$set": {
+                                        "ongoingJourney.stoppages": stops,
+                                        "ongoingJourney.lastReachedStop": stops[i]["name"],
+                                        "ongoingJourney.return": True
+                                    }
+                                }
+                            )
+                        else:
+                            # Normal stop update
+                            db["drivers"].update_one(
+                                {"email": email},
+                                {
+                                    "$set": {
+                                        "ongoingJourney.stoppages": stops,
+                                        "ongoingJourney.lastReachedStop": stops[i]["name"]
+                                    }
+                                }
+                            )
+
+                        # Notify students
+                        notify_students(driver_doc["institutionCode"], driver_doc.get("busNo"), stops[i]["name"])
+                        break
 
                 except Exception as e:
                     print(f"❌ Error processing stop {stop.get('name', '?')}: {e}")
-
-        if updated:
-            db["drivers"].update_one(
-                {"email": email},
-                {
-                    "$set": {
-                        "ongoingJourney.stoppages": stops,
-                        "ongoingJourney.lastReachedStop": stops[i]["name"]
-                    }
-                }
-            )
-            notify_students(driver_doc["institutionCode"], driver_doc.get("busNo"), stops[i]["name"])
 
     return {"message": "Location updated"}
 
