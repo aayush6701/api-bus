@@ -735,41 +735,6 @@ def get_driver_journeys(driver: dict = Depends(get_current_driver)):
 
 from fastapi import Request
 
-# @app.post("/driver/start-journey")
-# async def start_journey(request: Request, driver_token: dict = Depends(get_current_driver)):
-#     data = await request.json()
-#     route_name = data.get("routeName")
-#     driver_email = driver_token["sub"]
-
-#     # Fetch driver
-#     driver = db["drivers"].find_one({"email": driver_email})
-#     if not driver:
-#         raise HTTPException(status_code=404, detail="Driver not found")
-
-#     driver_id = str(driver["_id"])
-
-#     # Find assigned journey
-#     institution = db["institutions"].find_one({"buses.journeys.driverId": driver_id})
-#     if not institution:
-#         raise HTTPException(status_code=404, detail="No journey found")
-
-#     for bus in institution["buses"]:
-#         for journey in bus["journeys"]:
-#             if journey["driverId"] == driver_id and journey["routeName"] == route_name:
-#                 stops = [{
-#                     "name": s["name"],
-#                     "latitude": s["latitude"],
-#                     "longitude": s["longitude"],
-#                     "status": False,
-#                     "alert": False 
-#                 } for s in journey["stoppages"]]
-#                 db["drivers"].update_one(
-#                     {"email": driver_email},
-#                     {"$set": {"ongoingJourney": {"routeName": route_name, "stoppages": stops}}}
-#                 )
-#                 return {"message": "Journey started"}
-#     raise HTTPException(status_code=404, detail="Matching journey not found")
-
 @app.post("/driver/start-journey")
 async def start_journey(request: Request, driver_token: dict = Depends(get_current_driver)):
     data = await request.json()
@@ -1256,7 +1221,8 @@ def update_bus(data: dict = Body(...), superadmin: dict = Depends(get_current_su
                         "name": stop.get("name"),
                         "latitude": stop.get("latitude"),
                         "longitude": stop.get("longitude"),
-                        "arrivalTime": stop.get("arrivalTime")
+                        "arrivalTime": stop.get("arrivalTime"),
+                         "returnTime": stop.get("returnTime")
                     })
 
                 buses[i]["journeys"].append(journey_obj)
