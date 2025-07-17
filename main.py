@@ -763,6 +763,8 @@ async def start_journey(request: Request, driver_token: dict = Depends(get_curre
                     "name": s["name"],
                     "latitude": s["latitude"],
                     "longitude": s["longitude"],
+                    "arrivalTime": s.get("arrivalTime"),
+                    "returnTime": s.get("returnTime"),
                     "status": False,
                     "alert": False 
                 } for s in journey["stoppages"]]
@@ -775,7 +777,7 @@ async def start_journey(request: Request, driver_token: dict = Depends(get_curre
                             "status": True,
                             "location.latitude": latitude,
                             "location.longitude": longitude,
-                            "ongoingJourney": {"routeName": route_name, "stoppages": stops}
+                            "ongoingJourney": {"routeName": route_name,  "return": False, "stoppages": stops}
                         }
                     }
                 )
