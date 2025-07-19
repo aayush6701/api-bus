@@ -1389,6 +1389,36 @@ def get_driver_location(student: dict = Depends(get_current_student)):
     }
 
 
+@app.post("/student/reset-alert")
+def reset_alert(stop_name: str = Query(...), bus_no: str = Query(...), institution_code: str = Query(...)):
+    driver = db["drivers"].find_one({
+        "institutionCode": institution_code,
+        "status": True,
+        "busNo": bus_no,
+        "ongoingJourney.stoppages.name": stop_name
+    })
+
+    if not driver:
+        raise HTTPException(status_code=404, detail="Active driver not found with that stop")
+
+    stoppages = driver["ongoingJourney"]["stoppages"]
+    updated = False
+
+    for stop in stoppages:
+        if stop["name"] == stop_name:
+            stop["alert"] = False
+            updated = True
+            break
+
+    if updated:
+        db["drivers"].update_one(
+            {"_id": driver["_id"]},
+            {"$set": {"ongoingJourney.stoppages": stoppages}}
+        )
+        return {"message": f"Alert reset for stop {stop_name}"}
+    else:
+        raise HTTPException(status_code=404, detail="Stop not found")
+
 # @app.get("/student/bus-status")
 # def get_bus_status(bus_no: str = Query(...), institution_code: str = Query(...)):
 #     institution = db["institutions"].find_one({"institutionCode": institution_code})
