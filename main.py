@@ -1082,6 +1082,7 @@ def get_updated_stops_for_student(student: dict = Depends(get_current_student)):
     email = student.get("sub")
     institution_code = student.get("institutionCode")
 
+    # 1. Get student
     student_doc = db["students"].find_one({
         "institutionCode": institution_code,
         "email": email
@@ -1090,50 +1091,45 @@ def get_updated_stops_for_student(student: dict = Depends(get_current_student)):
         raise HTTPException(status_code=404, detail="Student not found")
 
     bus_no = student_doc.get("busNo")
-    if not bus_no:
-        raise HTTPException(status_code=404, detail="No bus assigned")
 
-    # 🔍 Find active driver for this institution & bus
-    active_driver = db["drivers"].find_one({
-        "institutionCode": institution_code,
-        "status": True,
-        "busNo": bus_no  # ← we match the bus too
-    })
+    # 2. Get institution
+    institution = db["institutions"].find_one({"institutionCode": institution_code})
+    if not institution:
+        raise HTTPException(status_code=404, detail="Institution not found")
 
-    if not active_driver:
-        raise HTTPException(status_code=404, detail="Active driver not found for this bus")
+    # 3. Find matching bus and active driver
+    for bus in institution.get("buses", []):
+        if bus.get("busNo") == bus_no:
+            for journey in bus.get("journeys", []):
+                driver = db["drivers"].find_one({
+                    "_id": ObjectId(journey["driverId"]),
+                    "status": True
+                })
+                if driver and driver.get("ongoingJourney"):
+                    ongoing = driver["ongoingJourney"]
+                    stoppages = []
+                    for stop in ongoing.get("stoppages", []):
+                        stop_data = {
+                            "name": stop["name"],
+                            "latitude": stop["latitude"],
+                            "longitude": stop["longitude"],
+                            "status": stop.get("status", False),
+                            "alert": stop.get("alert", False),
+                        }
+                        if ongoing.get("return", False):
+                            stop_data["returnTime"] = stop.get("returnTime", "")
+                        else:
+                            stop_data["arrivalTime"] = stop.get("arrivalTime", "")
+                        stoppages.append(stop_data)
 
-    location = active_driver.get("location", {})
-    ongoing = active_driver.get("ongoingJourney")
-    if not ongoing:
-        raise HTTPException(status_code=404, detail="No ongoing journey")
+                    return {
+                        "status": True,
+                        "location": driver.get("location", {}),
+                        "return": ongoing.get("return", False),
+                        "stoppages": stoppages
+                    }
 
-    is_returning = ongoing.get("return", False)
-
-    # Build the stoppages list
-    stoppages = []
-    for stop in ongoing.get("stoppages", []):
-        stop_data = {
-            "name": stop["name"],
-            "latitude": stop["latitude"],
-            "longitude": stop["longitude"],
-            "status": stop.get("status", False),
-            "alert": stop.get("alert", False)
-        }
-
-        if is_returning:
-            stop_data["returnTime"] = stop.get("returnTime", "")
-        else:
-            stop_data["arrivalTime"] = stop.get("arrivalTime", "")
-
-        stoppages.append(stop_data)
-
-    return {
-        "status": active_driver["status"],
-        "location": location,
-        "return": is_returning,
-        "stoppages": stoppages
-    }
+    raise HTTPException(status_code=404, detail="No active driver found for student’s bus")
 
 def notify_students(institution_code, bus_no, stop_name):
     students = db["students"].find({
