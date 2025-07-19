@@ -1048,34 +1048,27 @@ from fastapi import Query
 
 @app.get("/student/bus-status")
 def get_bus_status(bus_no: str, institution_code: str):
-    # Find active driver for the bus
-    driver = db["drivers"].find_one({
-        "institutionCode": institution_code,
-        "busNo": bus_no,
-        "status": True
-    })
+    institution = db["institutions"].find_one({"institutionCode": institution_code})
+    if not institution:
+        return {"status": False, "message": "Institution not found"}
 
-    if not driver:
-        return {
-            "status": False,
-            "message": "No active driver for this bus"
-        }
+    for bus in institution.get("buses", []):
+        if bus.get("busNo") == bus_no:
+            for journey in bus.get("journeys", []):
+                driver = db["drivers"].find_one({
+                    "_id": ObjectId(journey["driverId"]),
+                    "status": True
+                })
+                if driver:
+                    ongoing = driver.get("ongoingJourney")
+                    return {
+                        "status": True,
+                        "mobile": driver.get("mobile", "--"),
+                        "journey": ongoing.get("routeName", "--") if ongoing else None,
+                        "return": ongoing.get("return", False) if ongoing else None
+                    }
 
-    ongoing = driver.get("ongoingJourney")
-    if not ongoing:
-        return {
-            "status": True,
-            "mobile": driver.get("mobile", "--"),
-            "journey": None,
-            "return": None
-        }
-
-    return {
-        "status": driver.get("status", False),
-        "mobile": driver.get("mobile", "--"),
-        "journey": ongoing.get("journeyName", "--"),
-        "return": ongoing.get("return", False)
-    }
+    return {"status": False, "message": "No active driver for this bus"}
 
 
 from fastapi import Depends, HTTPException
