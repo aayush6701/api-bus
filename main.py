@@ -1363,6 +1363,8 @@ def get_driver_map_data(student: dict = Depends(get_current_student)):
 
     return {"status": False, "message": "No active driver for this bus"}
 
+from bson import ObjectId
+
 @app.get("/student/driver-location")
 def get_driver_location(student: dict = Depends(get_current_student)):
     email = student.get("sub")
@@ -1380,18 +1382,27 @@ def get_driver_location(student: dict = Depends(get_current_student)):
     if not bus_no:
         raise HTTPException(status_code=404, detail="No bus assigned")
 
-    driver = db["drivers"].find_one({
-        "institutionCode": institution_code,
-        "busNo": bus_no
-    })
+    # 🔍 Get the bus and journey from the institution
+    institution = db["institutions"].find_one({"institutionCode": institution_code})
+    if not institution:
+        raise HTTPException(status_code=404, detail="Institution not found")
 
-    if not driver:
-        raise HTTPException(status_code=404, detail="Driver not found")
+    bus = next((b for b in institution.get("buses", []) if b.get("busNo") == bus_no), None)
+    if not bus:
+        raise HTTPException(status_code=404, detail="Bus not found")
 
-    return {
-        "status": driver.get("status", False),
-        "location": driver.get("location", {"latitude": None, "longitude": None})
-    }
+    for journey in bus.get("journeys", []):
+        driver = db["drivers"].find_one({
+            "_id": ObjectId(journey["driverId"]),
+            "status": True
+        })
+        if driver:
+            return {
+                "status": driver.get("status", False),
+                "location": driver.get("location", {"latitude": None, "longitude": None})
+            }
+
+    raise HTTPException(status_code=404, detail="Driver not found")
 
 
 @app.post("/student/reset-alert")
