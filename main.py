@@ -1309,8 +1309,6 @@ def mark_alert(stop_name: str = Query(...), bus_no: str = Query(...), institutio
         raise HTTPException(status_code=404, detail="Stop not found")
 
 
-
-from fastapi import Depends, HTTPException
 from bson import ObjectId
 
 @app.get("/student/driver-map-data")
@@ -1318,6 +1316,7 @@ def get_driver_map_data(student: dict = Depends(get_current_student)):
     email = student.get("sub")
     institution_code = student.get("institutionCode")
 
+    # Get the student document
     student_doc = db["students"].find_one({
         "email": email,
         "institutionCode": institution_code
@@ -1328,35 +1327,41 @@ def get_driver_map_data(student: dict = Depends(get_current_student)):
 
     bus_no = student_doc.get("busNo")
     if not bus_no:
-        return {"status": False}
+        return {"status": False, "message": "No bus assigned"}
 
-    # 🚌 Find the active driver for this student’s bus
-    driver = db["drivers"].find_one({
-        "institutionCode": institution_code,
-        "busNo": bus_no,
-        "status": True
-    })
+    # Find the institution and bus
+    institution = db["institutions"].find_one({"institutionCode": institution_code})
+    if not institution:
+        return {"status": False, "message": "Institution not found"}
 
-    if not driver or not driver.get("ongoingJourney"):
-        return {"status": False}
+    bus = next((b for b in institution.get("buses", []) if b.get("busNo") == bus_no), None)
+    if not bus:
+        return {"status": False, "message": "Bus not found"}
 
-    location = driver.get("location", {})
-    journey = driver["ongoingJourney"]
-    stops = journey.get("stoppages", [])
-
-    stoppages = []
-    for stop in stops:
-        stoppages.append({
-            "name": stop["name"],
-            "latitude": stop["latitude"],
-            "longitude": stop["longitude"]
+    # Search for an active driver assigned to a journey in this bus
+    for journey in bus.get("journeys", []):
+        driver = db["drivers"].find_one({
+            "_id": ObjectId(journey["driverId"]),
+            "status": True,
+            "ongoingJourney": {"$exists": True}
         })
+        if driver:
+            journey_data = driver.get("ongoingJourney", {})
+            location = driver.get("location", {})
+            stoppages = journey_data.get("stoppages", [])
+            return {
+                "status": True,
+                "location": location,
+                "stoppages": [
+                    {
+                        "name": stop["name"],
+                        "latitude": stop["latitude"],
+                        "longitude": stop["longitude"]
+                    } for stop in stoppages
+                ]
+            }
 
-    return {
-        "status": True,
-        "location": location,
-        "stoppages": stoppages
-    }
+    return {"status": False, "message": "No active driver for this bus"}
 
 @app.get("/student/driver-location")
 def get_driver_location(student: dict = Depends(get_current_student)):
