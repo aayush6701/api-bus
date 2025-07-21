@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
 from models import SuperAdminRegister, DriverRegister, StudentRegister, StudentLogin, StudentProfile,StudentSecureLogin,StartJourney, MarkOnline
-
 from pymongo import MongoClient
 from jose import JWTError, jwt
 import bcrypt
@@ -984,6 +983,16 @@ def complete_student_registration(
     if not roll_no or not institution_code:
         raise HTTPException(status_code=400, detail="Invalid token payload")
 
+    # 🔍 Check if the email is already used by another student in the same institution
+    existing_email = db["students"].find_one({
+        "institutionCode": institution_code,
+        "email": data.email,
+        "rollNo": {"$ne": roll_no}
+    })
+    if existing_email:
+        raise HTTPException(status_code=400, detail="Email already in use by another student")
+
+    # ✅ Proceed to update student record
     hashed_pw = bcrypt.hashpw(data.password.encode('utf-8'), bcrypt.gensalt())
 
     result = db["students"].update_one(
@@ -1434,172 +1443,3 @@ def reset_alert(stop_name: str = Query(...), bus_no: str = Query(...), instituti
         return {"message": f"Alert reset for stop {stop_name}"}
     else:
         raise HTTPException(status_code=404, detail="Stop not found")
-
-# @app.get("/student/bus-status")
-# def get_bus_status(bus_no: str = Query(...), institution_code: str = Query(...)):
-#     institution = db["institutions"].find_one({"institutionCode": institution_code})
-#     if not institution:
-#         raise HTTPException(status_code=404, detail="Institution not found")
-
-#     # Find the bus and assigned driver
-#     for bus in institution.get("buses", []):
-#         if bus.get("busNo") == bus_no:
-#             for journey in bus.get("journeys", []):
-#                 driver_id = journey.get("driverId")
-#                 driver = db["drivers"].find_one({"_id": ObjectId(driver_id)})
-
-#                 if driver:
-#                     response = {
-#                         "active": driver["status"],
-#                         "mobile": driver["mobile"],
-#                         "journey": journey.get("routeName"),
-#                         "latitude": driver["location"].get("latitude"),
-#                         "longitude": driver["location"].get("longitude"),
-#                     }
-
-#                     # 🟢 Use driver's live ongoingJourney if available
-#                     ongoing = driver.get("ongoingJourney")
-#                     if ongoing and ongoing.get("routeName") == journey.get("routeName"):
-#                         response["stoppages"] = ongoing.get("stoppages", [])
-#                     else:
-#                         # Fall back to static data if not live
-#                         response["stoppages"] = [
-#                             {
-#                                 **stop,
-#                                 "status": False,
-#                                 "alert": False
-#                             } for stop in journey.get("stoppages", [])
-#                         ]
-
-#                     return response
-
-#     raise HTTPException(status_code=404, detail="Bus/journey/driver not found")
-
-
-# Assuming get_current_student, db, and other imports are already set up
-
-# @app.get("/student/stops")
-# def get_stops_for_student(student: dict = Depends(get_current_student)):
-#     email = student.get("sub")  # 'sub' contains the student's email
-#     institution_code = student.get("institutionCode")
-
-#     # ✅ FIX: Look up student by email instead of roll number
-#     student_doc = db["students"].find_one({
-#         "institutionCode": institution_code,
-#         "email": email
-#     })
-#     if not student_doc:
-#         raise HTTPException(status_code=404, detail="Student not found")
-
-#     bus_no = student_doc.get("busNo")
-#     if not bus_no:
-#         raise HTTPException(status_code=404, detail="No bus assigned")
-
-#     # ✅ Get the active driver for the institution
-#     active_driver = db["drivers"].find_one({
-#         "institutionCode": institution_code,
-#         "status": True
-#     })
-#     if not active_driver:
-#         raise HTTPException(status_code=404, detail="Bus not active")
-
-#     driver_location = active_driver.get("location", {})
-#     if not driver_location.get("latitude") or not driver_location.get("longitude"):
-#         raise HTTPException(status_code=400, detail="Driver location unavailable")
-
-#     driver_id = str(active_driver["_id"])
-
-#     institution = db["institutions"].find_one({"institutionCode": institution_code})
-#     if not institution:
-#         raise HTTPException(status_code=404, detail="Institution not found")
-
-#     # ✅ Match bus and journey
-#     for bus in institution.get("buses", []):
-#         if bus.get("busNo") == bus_no:
-#             for journey in bus.get("journeys", []):
-#                 if journey.get("driverId") == driver_id:
-#                     stoppages = journey.get("stoppages", [])
-
-#                     avg_speed = 6.94  # meters/second (~25 km/h)
-#                     driver_coords = (driver_location["latitude"], driver_location["longitude"])
-#                     now = datetime.now()
-
-#                     stops_with_eta = []
-
-#                     # 🔄 Get latest stopReached from student's notifications
-#                     student_notification = student_doc.get("notifications", {})
-#                     stop_reached_name = student_notification.get("stopReached")
-
-#                     for stop in stoppages:
-#                         stop_coords = (stop["latitude"], stop["longitude"])
-#                         dist = geodesic(driver_coords, stop_coords).meters
-#                         eta_secs = int(dist / avg_speed)
-#                         eta_time = (now + timedelta(seconds=eta_secs)).strftime("%H:%M")
-#                         diff_minutes = eta_secs // 60
-
-#                         # ✅ Determine if this stop is already reached
-#                         reached = stop["name"] == stop_reached_name
-
-#                         stops_with_eta.append({
-#                             "name": stop["name"],
-#                             "defaultArrivalTime": stop["arrivalTime"],
-#                             "estimatedArrivalTime": eta_time,
-#                             "inMinutes": diff_minutes,
-#                             "reached": reached
-#                         })
-
-
-#                     return stops_with_eta
-
-#     raise HTTPException(status_code=404, detail="No journey found for active driver")
-
-
-# @app.post("/driver/start-journey")
-# async def start_journey(request: Request, driver_token: dict = Depends(get_current_driver)):
-#     data = await request.json()
-#     route_name = data.get("routeName")
-#     latitude = data.get("latitude")
-#     longitude = data.get("longitude")
-
-#     driver_email = driver_token["sub"]
-
-#     # Fetch driver
-#     driver = db["drivers"].find_one({"email": driver_email})
-#     if not driver:
-#         raise HTTPException(status_code=404, detail="Driver not found")
-
-#     driver_id = str(driver["_id"])
-
-#     # Find assigned journey
-#     institution = db["institutions"].find_one({"buses.journeys.driverId": driver_id})
-#     if not institution:
-#         raise HTTPException(status_code=404, detail="No journey found")
-
-#     for bus in institution["buses"]:
-#         for journey in bus["journeys"]:
-#             if journey["driverId"] == driver_id and journey["routeName"] == route_name:
-#                 stops = [{
-#                     "name": s["name"],
-#                     "latitude": s["latitude"],
-#                     "longitude": s["longitude"],
-#                     "arrivalTime": s.get("arrivalTime"),
-#                     "returnTime": s.get("returnTime"),
-#                     "status": False,
-#                     "alert": False 
-#                 } for s in journey["stoppages"]]
-
-#                 # ✅ Update driver's journey, status and location
-#                 db["drivers"].update_one(
-#                     {"email": driver_email},
-#                     {
-#                         "$set": {
-#                             "status": True,
-#                             "location.latitude": latitude,
-#                             "location.longitude": longitude,
-#                             "ongoingJourney": {"routeName": route_name,  "return": False, "stoppages": stops}
-#                         }
-#                     }
-#                 )
-#                 return {"message": "Journey started"}
-    
-#     raise HTTPException(status_code=404, detail="Matching journey not found")
