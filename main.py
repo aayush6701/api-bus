@@ -983,10 +983,16 @@ def complete_student_registration(
     if not roll_no or not institution_code:
         raise HTTPException(status_code=400, detail="Invalid token payload")
 
+    # ✅ Normalize and sanitize inputs
+    cleaned_email = data.email.strip().lower()
+    cleaned_name = data.name.strip()
+    cleaned_mobile = data.mobile.strip()
+    cleaned_address = data.address.strip()
+
     # 🔍 Check if the email is already used by another student in the same institution
     existing_email = db["students"].find_one({
         "institutionCode": institution_code,
-        "email": data.email,
+        "email": cleaned_email,
         "rollNo": {"$ne": roll_no}
     })
     if existing_email:
@@ -998,10 +1004,10 @@ def complete_student_registration(
     result = db["students"].update_one(
         {"institutionCode": institution_code, "rollNo": roll_no},
         {"$set": {
-            "name": data.name,
-            "email": data.email,
-            "mobile": data.mobile,
-            "address": data.address,
+            "name": cleaned_name,
+            "email": cleaned_email,
+            "mobile": cleaned_mobile,
+            "address": cleaned_address,
             "password": hashed_pw.decode('utf-8')
         }}
     )
