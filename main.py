@@ -983,13 +983,26 @@ def complete_student_registration(
     if not roll_no or not institution_code:
         raise HTTPException(status_code=400, detail="Invalid token payload")
 
+    # Fetch current student
+    student = db["students"].find_one({
+        "institutionCode": institution_code,
+        "rollNo": roll_no
+    })
+
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    # 🛑 If already registered (email/password already set), block re-registration
+    if "email" in student and "password" in student:
+        raise HTTPException(status_code=400, detail="Student already registered")
+
     # ✅ Normalize and sanitize inputs
     cleaned_email = data.email.strip().lower()
     cleaned_name = data.name.strip()
     cleaned_mobile = data.mobile.strip()
     cleaned_address = data.address.strip()
 
-    # 🔍 Check if the email is already used by another student in the same institution
+    # 🔍 Check for duplicate email in same institution (excluding self)
     existing_email = db["students"].find_one({
         "institutionCode": institution_code,
         "email": cleaned_email,
@@ -998,7 +1011,7 @@ def complete_student_registration(
     if existing_email:
         raise HTTPException(status_code=400, detail="Email already in use by another student")
 
-    # ✅ Proceed to update student record
+    # ✅ Update student record
     hashed_pw = bcrypt.hashpw(data.password.encode('utf-8'), bcrypt.gensalt())
 
     result = db["students"].update_one(
@@ -1013,7 +1026,7 @@ def complete_student_registration(
     )
 
     if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="Student not found or already registered")
+        raise HTTPException(status_code=404, detail="Failed to update student")
 
     return {"message": "Student registered successfully"}
 
