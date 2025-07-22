@@ -1154,6 +1154,7 @@ def get_updated_stops_for_student(student: dict = Depends(get_current_student)):
                         "status": True,
                         "location": driver.get("location", {}),
                         "return": ongoing.get("return", False),
+                        "lastReachedStop": ongoing.get("lastReachedStop", ""),  # ✅ NEW LINE
                         "stoppages": stoppages
                     }
 
@@ -1462,3 +1463,27 @@ def reset_alert(stop_name: str = Query(...), bus_no: str = Query(...), instituti
         return {"message": f"Alert reset for stop {stop_name}"}
     else:
         raise HTTPException(status_code=404, detail="Stop not found")
+
+
+from pydantic import BaseModel
+
+class StudentPasswordReset(BaseModel):
+    email: str
+    new_password: str
+
+@app.post("/student/change-password")
+def change_student_password(data: StudentPasswordReset):
+    student = db["students"].find_one({"email": data.email})
+
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    hashed_pw = bcrypt.hashpw(data.new_password.encode('utf-8'), bcrypt.gensalt())
+
+    db["students"].update_one(
+        {"email": data.email},
+        {"$set": {"password": hashed_pw.decode('utf-8')}}
+    )
+
+    return {"message": "Password updated successfully"}
+ 
